@@ -4854,6 +4854,7 @@ column_definition_ref data_type opt_column_attribute_list opt_column_reference o
 }
 | column_definition_ref data_type AI COLUMN '(' expr ')' WITH '(' expr_list ')' opt_generated_column_attribute_list opt_column_reference opt_position_column
 {
+  (void)($10);
   (void)($13);
   ParseNode *attributes = NULL;
   ParseNode *storage_type = NULL;
