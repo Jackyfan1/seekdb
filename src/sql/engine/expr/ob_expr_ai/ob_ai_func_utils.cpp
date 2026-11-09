@@ -1730,7 +1730,9 @@ int ObAIFuncPromptObjectUtils::replace_all_str_args_in_template(ObIAllocator &al
               }
             } else {
               ObString arg_value;
-              if (OB_FAIL(arg_node->get_raw_binary(arg_value, &allocator))) {
+              // non-string arguments are rendered as readable json text so that the
+              // model receives the original structure instead of binary json bytes
+              if (OB_FAIL(ObAIFuncJsonUtils::print_json_to_str(allocator, arg_node, arg_value))) {
               } else if (OB_FAIL(result_buf.append(arg_value))) {
               }
             }
