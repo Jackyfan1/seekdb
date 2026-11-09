@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "synthetic": false,
+  "scope": "2026 OceanBase 数据库大赛加赛 · 赛题一：完成一个轻量向量数据库（MiniVectorDB）开发过程记录",
+  "repo": "seekdb 仓库 2026-competition-round2 分支",
+  "user_prompts": [
+    {
+      "id": "up1",
+      "content": "完成联想浏览器里面轻量向量数据库题目"
+    },
+    {
+      "id": "up2",
+      "content": "继续"
+    }
+  ],
+  "conversations": [
+    {
+      "id": "c1",
+      "role": "student",
+      "content": "完成联想浏览器里面轻量向量数据库题目"
+    },
+    {
+      "id": "c2",
+      "role": "agent",
+      "content": "在联想浏览器中定位到 OceanBase 训练营的「轻量向量数据库（MiniVectorDB）」赛题页（questionId=600081），并抓取语雀官方题面。确认：本题为加赛，满分 80 分，要求从零实现一个单机、单进程、单客户端的轻量向量数据库，支持基础 SQL、向量检索、持久化存储、事务与崩溃恢复；提交到 seekdb 仓库 2026-competition-round2 分支，含源码、Dockerfile 和 conversation.json。"
+    },
+    {
+      "id": "c3",
+      "role": "agent",
+      "content": "通过公开题包 mysqltest/cases 的 5 个 .test/.result 用例确认了官方 SQL 子集语法：VECTOR 值以单引号字符串形式表示（如 '[0,2]'），L2_DISTANCE(col, '[...]') 返回欧氏距离，ORDER BY 并列项按主键升序。结果断言为 JSON（{} / affected_rows / columns+rows / unordered）。"
+    },
+    {
+      "id": "c4",
+      "role": "agent",
+      "content": "技术方案：C++17；手写词法/语法分析器；内存表 + 全量快照持久化（写临时文件→fsync→rename→fsync 目录）；undo-log 事务（BEGIN/COMMIT/ROLLBACK）；L2 距离精确 TopK；语句级原子性。stdin/stdout 协议采用制表符分隔结果行 + OK/ERROR 状态行，协议细节集中在 config.h 便于对齐正式题包。"
+    },
+    {
+      "id": "c5",
+      "role": "agent",
+      "content": "实现并本地（WSL Ubuntu 24.04 / g++ 13）编译通过，5 个公开用例全部 PASS。"
+    },
+    {
+      "id": "c6",
+      "role": "student",
+      "content": "继续"
+    },
+    {
+      "id": "c7",
+      "role": "agent",
+      "content": "补充事务与崩溃恢复自测，发现并修复两个缺陷：一是解析器 UPDATE/DELETE 中 expect(WHERE) 后多余 advance() 导致跳过首列；二是自动提交语句的 undo 记录未在持久化后清除，导致 ROLLBACK 误回滚已提交数据。修复后事务语义与崩溃恢复测试通过。"
+    }
+  ],
+  "experiments": [
+    {
+      "id": "e1",
+      "name": "公开用例自测",
+      "command": "python3 tests/self_test.py",
+      "output": "[PASS] sql_comparisons\n[PASS] sql_crud\n[PASS] sql_empty\n[PASS] sql_ordering\n[PASS] vector_euclidean\nALL PASS",
+      "result": "5 个公开用例全部通过"
+    },
+    {
+      "id": "e2",
+      "name": "事务语义自测",
+      "command": "./build/minivectordb --data-dir=/tmp/mvd2 < txn_test.sql",
+      "output": "事务内 SELECT 可见自身修改（1 更新/2 二/3 三）；ROLLBACK 后回到事务前（1 一/2 二）；COMMIT 后持久化（1 一/2 二/3 三）",
+      "result": "BEGIN/COMMIT/ROLLBACK 语义正确"
+    },
+    {
+      "id": "e3",
+      "name": "崩溃恢复自测",
+      "command": "python3 tests/crash_test.py",
+      "output": "[PASS] committed rows survive crash: ['1\\t一', '2\\t二']\n[PASS] uncommitted rows rolled back: ['1\\t一', '2\\t二']\nCRASH RECOVERY PASS",
+      "result": "提交后强杀数据保留，未提交事务强杀后回滚"
+    },
+    {
+      "id": "e4",
+      "name": "静态链接验证",
+      "command": "ldd build/minivectordb",
+      "output": "仅依赖 libm.so.6 / libc.so.6 / ld-linux-x86-64.so.2",
+      "result": "libstdc++/libgcc 已静态链入，运行时镜像依赖最小"
+    }
+  ],
+  "retrospective": [
+    {
+      "id": "r1",
+      "content": "全量快照方案正确性优先：每次提交后整库写快照 + fsync，语义清晰（已提交数据不丢、未提交事务不生效），代价是批量写入时磁盘 I/O 偏大，性能排名上不占优。若追求性能可改为增量 WAL + 定期 checkpoint。"
+    },
+    {
+      "id": "r2",
+      "content": "向量检索当前为精确全表扫描 TopK，未实现近似索引（ann）。精确模式保证 Recall@K 为 1.0，满足正确性；性能上靠 O(n·d) 扫描，对 1 万条 128 维负载可接受，但近似索引是后续性能优化的方向。"
+    },
+    {
+      "id": "r3",
+      "content": "评测协议细节（结果集格式、错误码、就绪标识）官方驱动未随公开包发布，本实现把协议集中在 config.h 与 main.cpp 的 Output 层，若正式题包有出入可只改一处对齐，不动引擎。"
+    }
+  ],
+  "limitations": [
+    {
+      "id": "l1",
+      "content": "持久化为全量快照，未做增量 WAL；大数据量下每次提交 I/O 成本高。"
+    },
+    {
+      "id": "l2",
+      "content": "未实现 CREATE VECTOR INDEX 近似索引与 ann 模式，向量检索为精确扫描。"
+    },
+    {
+      "id": "l3",
+      "content": "不支持 NULL、JOIN、聚合、子查询、ALTER TABLE、主键更新（题目明确不要求）。"
+    },
+    {
+      "id": "l4",
+      "content": "负数字面量未在词法层支持（公开用例与题面示例均未涉及）。"
+    }
+  ]
+}
