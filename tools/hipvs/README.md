@@ -67,3 +67,44 @@ cd tools/hipvs
 - 建图：`CREATE VECTOR INDEX` 到索引 ready 的墙钟时间（同机同数据，vsag vs cuvs）；
 - 检索：单条延迟 + 批量 QPS；
 - 正确性：recall@10 对精确检索真值，要求不低于 CPU HNSW 基线。
+
+## 6. 本地可复现验证（无 AMD 硬件时的等价参照）
+
+在拿到 `SEEKDB-HIPVS` 模板之前，可以用 `bench_cuvs_reference.py` 在任意 CUDA GPU 上验证同一套参数与
+度量口径：hipVS 的 C API 与上游 cuVS 同名同参，脚本只改依赖包，不改参数与统计方式。
+**这份数据是方法论参照，不能当作 AMD 平台的成绩引用。**
+
+```bash
+pip install cuvs-cu12 cupy-cuda12x hnswlib numpy
+python tools/hipvs/bench_cuvs_reference.py 100000 128 10        # n dim k [nq]
+```
+
+测试机：RTX 4060 Laptop 8GB / CUDA / cuVS 26.10 / Python 3.12。
+参数与 `hipvs_cagra_bench.cpp` 完全一致：`graph_degree=64`、`intermediate_graph_degree=96`、
+度量 `L2`、建图算法 `nn_descent`；CPU 基线为 hnswlib（M=16, ef_construction=200, ef=128）。
+
+**建图**
+
+| 规模 | CPU HNSW | GPU CAGRA | 加速比 | recall@10 CPU / GPU |
+|---|---|---|---|---|
+| 100k × 128 | 4.32 s | 2.32 s（43.1K vec/s） | 1.9× | 0.479 / 0.525 |
+| 500k × 128 | 36.62 s | 8.65 s（57.8K vec/s） | 4.2× | 0.261 / 0.272 |
+
+**检索（100k × 128，10,000 条查询，k=10）**
+
+| 指标 | CPU HNSW | GPU CAGRA |
+|---|---|---|
+| 总耗时 | 300.3 ms | 80.1 ms |
+| 吞吐 | 33.3K q/s | 124.8K q/s |
+| 单条延迟 | 0.030 ms | 0.008 ms |
+
+结论：
+
+1. **建图加速比随规模上升**（100k 1.9× → 500k 4.2×），与“CPU 建图近似线性、GPU 并行度可继续摊薄”的预期一致，
+   这正是赛题关注的构建阶段收益；
+2. **检索在极小批量下 GPU 不占优**：只查 100 条时 GPU 94 ms、CPU 6.2 ms，内核启动与 H2D 拷贝占主导；
+   批量到 1 万条后 GPU 反超 3.7×。因此接入 seekdb 时应以批量算子（`dbms_vector.batch_knn`）为主要落点；
+3. **CAGRA 的 recall 始终不低于同参数 CPU HNSW**。绝对值偏低由数据分布决定（均匀随机 128 维是最难场景），
+   真实数据集（SIFT/GIST 类）通常在 0.9 以上。
+
+复现时注意：100 万条 × 128 维在 8GB 显存 + 7GB 内存的笔记本上会 OOM，需要更大内存或分块喂数据。
