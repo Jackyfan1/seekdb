@@ -2695,7 +2695,11 @@ int glob_files(const ObString &pattern_ob, ObIAllocator &allocator, FileSqlTable
     if (OB_FAIL(list_dir(dir, names, is_dir))) {
     } else {
       for (size_t i = 0; i < names.size(); ++i) {
-        if (!is_dir[i]
+        // Skip hidden files. This also filters the AppleDouble "._name" companions
+        // that macOS creates when the fixtures are copied around, so that the
+        // file list only contains the real data files.
+        const bool hidden = !names[i].empty() && '.' == names[i][0];
+        if (!is_dir[i] && !hidden
             && wildcard_match(name_pattern.data(), static_cast<int64_t>(name_pattern.size()),
                               names[i].data(), static_cast<int64_t>(names[i].size()))) {
           if ("." == dir) {
