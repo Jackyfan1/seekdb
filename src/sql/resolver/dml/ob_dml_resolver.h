@@ -662,6 +662,9 @@ protected:
   virtual const ObString get_view_db_name() const { return ObString(); }
   virtual const ObString get_view_name() const { return ObString(); }
 
+  // ai column strict read (session variable ai_column_strict_read)
+  int check_ai_column_strict_read();
+
   int check_table_item_with_gen_col_using_udf(const TableItem *table_item, bool &ans);
 
   bool get_joininfo_by_id(int64_t table_id, ResolverJoinInfo *&join_info);

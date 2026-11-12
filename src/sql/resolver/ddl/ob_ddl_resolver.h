@@ -242,6 +242,24 @@ public:
                                             share::schema::ObColumnSchemaV2 &column,
                                             const ObSQLMode sql_mode,
                                             ObSchemaChecker *schema_checker);
+  // ---------------- AI COLUMN support ----------------
+  static const char *const AI_COLUMN_META_PREFIX;
+  static const char AI_COLUMN_META_SEP = '\x1f';
+  static bool is_ai_column(const share::schema::ObColumnSchemaV2 &column);
+  static int build_ai_column_metadata(const share::schema::ObTableSchema &table_schema,
+                                      share::schema::ObColumnSchemaV2 &column,
+                                      const ParseNode *expr_node,
+                                      const ParseNode *options_node,
+                                      common::ObIAllocator &allocator);
+  static int resolve_ai_column_options(const ParseNode *options_node,
+                                       int64_t &max_retries,
+                                       common::ObString &sync_mode);
+  static int get_ai_column_meta_field(const common::ObString &comment,
+                                      const int64_t field_idx,
+                                      common::ObString &value);
+  static int make_ai_hidden_columns(const share::schema::ObColumnSchemaV2 &ai_column,
+                                    uint64_t *next_column_id,
+                                    common::ObIArray<share::schema::ObColumnSchemaV2> &hidden_columns);
   static int resolve_generated_column_expr(
       ObString &expr_str,
       common::ObIAllocator &allocator,

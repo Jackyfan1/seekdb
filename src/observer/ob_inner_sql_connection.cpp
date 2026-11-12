@@ -690,7 +690,9 @@ int ObInnerSQLConnection::do_query(sqlclient::ObIExecutor &executor, ObInnerSQLR
       ret = OB_ERR_UNEXPECTED;
       LOG_ERROR("ob_sql_ is NULL", K(ret));
     } else if (OB_FAIL(executor.execute(*ob_sql_, res.sql_ctx(), res.result_set()))) {
+      LOG_DEBUG("AI_DBG do_query executor.execute failed", K(ret), K(executor));
     } else {
+      LOG_DEBUG("AI_DBG do_query executor.execute ok", K(executor));
       ObSQLSessionInfo &session = res.result_set().get_session();
       if (OB_ISNULL(res.sql_ctx().schema_guard_)) {
         ret = OB_ERR_UNEXPECTED;
@@ -704,6 +706,7 @@ int ObInnerSQLConnection::do_query(sqlclient::ObIExecutor &executor, ObInnerSQLR
         // Opening the result set would attempt to execute/prefetch, which
         // fails with OB_NOT_INIT because there is no physical plan.
       } else if (OB_FAIL(res.open())) {
+        LOG_DEBUG("AI_DBG do_query res.open failed", K(ret), K(executor));
       }
     }
   }
@@ -1080,6 +1083,7 @@ int ObInnerSQLConnection::execute_write_inner(const ObString &sql,
   ObSqlQueryExecutor executor(sql);
   SMART_VAR(ObInnerSQLResult, res, get_session(),
             ob_sql_->get_plan_cache_access_service(), is_inner_session()) {
+    LOG_DEBUG("AI_DBG execute_write_inner enter", K(inited_), K(sql));
     if (!inited_) {
       ret = OB_NOT_INIT;
     } else if (0 == sql.length() || NULL == sql.ptr()  || '\0' == *(sql.ptr())) {
@@ -1087,14 +1091,17 @@ int ObInnerSQLConnection::execute_write_inner(const ObString &sql,
     }
     if (OB_SUCC(ret)) {
       if (OB_FAIL(res.init())) {
+        LOG_DEBUG("AI_DBG execute_write_inner res.init failed", K(ret), K(sql));
       }
     }
     if (OB_FAIL(ret)) {
     } else {
       res.result_set().set_user_sql(is_user_sql);
       if (OB_FAIL(query(executor, res))) {
+        LOG_DEBUG("AI_DBG execute_write_inner query failed", K(ret), K(sql));
       } else if (FALSE_IT(affected_rows = res.result_set().get_affected_rows())) {
       } else if (OB_FAIL(res.close())) {
+        LOG_DEBUG("AI_DBG execute_write_inner close failed", K(ret), K(sql));
       }
       if (get_session().get_ddl_info().is_ddl()) {
         SERVER_EVENT_ADD(

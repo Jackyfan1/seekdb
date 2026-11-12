@@ -33,6 +33,12 @@ class ObDMLService
 public:
   static bool check_cascaded_reference(const ObExpr *expr, const ObExprPtrIArray &row);
 
+  // ALTER TABLE ... RETRY AI COLUMN: invalidates the values of the rows
+  // selected by the predicate and registers their generation tasks.
+  static int retry_ai_column_rows(const uint64_t table_id,
+                                  const common::ObString &column_name,
+                                  const common::ObString &predicate);
+
   static int check_row_null(const ObExprPtrIArray &row,
                             ObEvalCtx &eval_ctx,
                             int64_t row_num,

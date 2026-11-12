@@ -884,6 +884,8 @@ int ObCreateTableResolver::resolve_table_elements(const ParseNode *node,
       }
     }
 
+    if (OB_SUCC(ret) && OB_FAIL(finalize_ai_columns())) {
+    }
     if (OB_SUCC(ret)) {
       for (int32_t i = resolved_cols_count; i < resolved_cols.count() && OB_SUCC(ret); i++) {
         ObColumnSchemaV2 &hidden_col = resolved_cols.at(i);
@@ -2342,5 +2344,67 @@ int ObCreateTableResolver::uk_or_heap_table_pk_add_to_index_list(ObArray<int> &i
   }
   return ret;
 }
+
+int ObCreateTableResolver::finalize_ai_columns()
+{
+  int ret = OB_SUCCESS;
+  ObCreateTableStmt *create_table_stmt = static_cast<ObCreateTableStmt*>(stmt_);
+  ObTableSchema &table_schema = create_table_stmt->get_create_table_arg().schema_;
+  ObSEArray<ObColumnSchemaV2*, 8> ai_columns;
+  for (int64_t i = 0; OB_SUCC(ret) && i < table_schema.get_column_count(); ++i) {
+    ObColumnSchemaV2 *col = table_schema.get_column_schema_by_idx(i);
+    if (OB_ISNULL(col)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (ObDDLResolver::is_ai_column(*col)) {
+      OZ (ai_columns.push_back(col));
+    }
+  }
+  // an ai column may only depend on ordinary columns
+  for (int64_t i = 0; OB_SUCC(ret) && i < ai_columns.count(); ++i) {
+    ObColumnSchemaV2 *ai_col = ai_columns.at(i);
+    ObString deps;
+    if (OB_FAIL(ObDDLResolver::get_ai_column_meta_field(
+            ai_col->get_comment_str(), 5, deps))) {
+      SQL_RESV_LOG(WARN, "failed to get ai column dependencies", K(ret));
+    } else if (!deps.empty()) {
+      const char *ptr = deps.ptr();
+      int64_t start = 0;
+      for (int64_t j = 0; OB_SUCC(ret) && j <= deps.length(); ++j) {
+        if (j == deps.length() || ',' == ptr[j]) {
+          ObString dep_name(static_cast<int32_t>(j - start), ptr + start);
+          if (!dep_name.empty()) {
+            const ObColumnSchemaV2 *dep_col = table_schema.get_column_schema(dep_name);
+            if (OB_NOT_NULL(dep_col) && ObDDLResolver::is_ai_column(*dep_col)) {
+              ret = OB_NOT_SUPPORTED;
+              SQL_RESV_LOG(WARN, "ai column depends on another ai column", K(ret), K(dep_name));
+            }
+          }
+          start = j + 1;
+        }
+      }
+    }
+  }
+  // each ai column owns three hidden columns: state, request id and result spec
+  for (int64_t i = 0; OB_SUCC(ret) && i < ai_columns.count(); ++i) {
+    ObColumnSchemaV2 *ai_col = ai_columns.at(i);
+    ObSEArray<ObColumnSchemaV2, 3> hidden_columns;
+    uint64_t next_id = cur_column_id_;
+    if (OB_FAIL(ObDDLResolver::make_ai_hidden_columns(*ai_col, &next_id, hidden_columns))) {
+    }
+    for (int64_t j = 0; OB_SUCC(ret) && j < hidden_columns.count(); ++j) {
+      if (OB_FAIL(table_schema.add_column(hidden_columns.at(j)))) {
+      } else {
+        ObColumnNameHashWrapper name_key(hidden_columns.at(j).get_column_name_str());
+        if (OB_FAIL(column_name_set_.set_refactored(name_key))) {
+        }
+      }
+    }
+    if (OB_SUCC(ret)) {
+      cur_column_id_ = next_id;
+    }
+  }
+  return ret;
+}
+
 }//end namespace sql
 }//end namespace oceanbase

@@ -1948,6 +1948,14 @@ OB_INLINE int ObSql::handle_text_query(const ObString &stmt, ObSqlCtx &context, 
   ObExecContext& ectx = result.get_exec_context();
   int get_plan_err = OB_SUCCESS; //used for judge whether add plan to plan cache
   bool use_plan_cache = session.get_local_ob_enable_plan_cache();
+  if (use_plan_cache) {
+    // ai column strict read depends on the current data state, so a cached plan
+    // cannot be reused while the check is enabled
+    bool ai_strict_read = false;
+    if (OB_SUCCESS == session.get_ai_column_strict_read(ai_strict_read) && ai_strict_read) {
+      use_plan_cache = false;
+    }
+  }
   ObPlanCacheCtx *pc_ctx = NULL;
   bool is_begin_commit_stmt = false;
 
@@ -1996,7 +2004,9 @@ OB_INLINE int ObSql::handle_text_query(const ObString &stmt, ObSqlCtx &context, 
   }
 
   if (OB_SUCC(ret) && !result.get_is_from_plan_cache()) { // did not get plan from plan cache, take the long path to generate plan
+    LOG_DEBUG("AI_DBG handle_text_query plan begin", K(trimed_stmt));
     if (OB_FAIL(SMART_CALL_LARGE(handle_physical_plan(trimed_stmt, context, result, *pc_ctx, get_plan_err)))) {
+      LOG_DEBUG("AI_DBG handle_physical_plan failed", K(ret), K(get_plan_err));
     }
   }
 
@@ -2016,6 +2026,7 @@ OB_INLINE int ObSql::handle_text_query(const ObString &stmt, ObSqlCtx &context, 
   if (NULL != pc_ctx) {
     pc_ctx->~ObPlanCacheCtx();
   }
+  LOG_DEBUG("AI_DBG handle_text_query exit", K(ret));
   return ret;
 }
 

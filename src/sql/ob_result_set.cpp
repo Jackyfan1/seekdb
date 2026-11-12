@@ -171,7 +171,9 @@ int ObResultSet::open()
   LinkExecCtxGuard link_guard(my_session_, get_exec_context());
   ObTraceSpanGuard open_span(&my_session_, TRACE_OPEN);
   if (OB_FAIL(execute())) {
+    LOG_DEBUG("AI_DBG result_set execute failed", K(ret), "stmt_type", get_stmt_type());
   } else if (OB_FAIL(open_result())) {
+    LOG_DEBUG("AI_DBG result_set open_result failed", K(ret), "stmt_type", get_stmt_type());
   }
 
   if (OB_SUCC(ret)) {
@@ -296,6 +298,7 @@ int ObResultSet::start_stmt()
         ret = OB_ERR_UNEXPECTED;
         LOG_ERROR("invalid transaction state", K(get_trans_state().is_start_stmt_executed()));
       } else if (OB_FAIL(ObSqlTransControl::start_stmt(get_exec_context()))) {
+        LOG_DEBUG("AI_DBG start_stmt failed", K(ret));
       } else {
         stmt::StmtType literal_stmt_type = literal_stmt_type_ != stmt::T_NONE ? literal_stmt_type_ : stmt_type_;
         my_session_.set_first_need_txn_stmt_type(literal_stmt_type);
@@ -699,6 +702,7 @@ OB_INLINE int ObResultSet::do_close_plan(int errcode, ObExecContext &ctx)
     if (OB_ISNULL(exec_result_)) {
       ret = OB_NOT_INIT;
     } else if (OB_FAIL(exec_result_->close(ctx))) {
+      LOG_DEBUG("AI_DBG do_close_plan exec_result close failed", K(ret), K(errcode));
     }
     // whether `close` is successful or not, restore ctx.errcode_
     ctx.set_errcode(old_errcode);
@@ -757,11 +761,14 @@ int ObResultSet::do_close(int *client_ret)
   const bool is_tx_active = my_session_.is_in_transaction();
   int do_close_plan_ret = OB_SUCCESS;
   ObPhysicalPlan* physical_plan_ = static_cast<ObPhysicalPlan*>(cache_obj_guard_.get_cache_obj());
+  LOG_DEBUG("AI_DBG do_close enter", KP(physical_plan_), KP(cmd_), K(errcode_),
+            "stmt_type", get_stmt_type());
   if (OB_LIKELY(NULL != physical_plan_)) {
     my_session_.set_last_plan_id(physical_plan_->get_plan_id());
     // Regardless of how, do_close_plan must be executed
     if (OB_UNLIKELY(OB_SUCCESS != (do_close_plan_ret = do_close_plan(errcode_,
                                                                      get_exec_context())))) {
+      LOG_DEBUG("AI_DBG do_close_plan_ret", K(do_close_plan_ret));
     }
     if (OB_SUCC(ret)) {
       ret = do_close_plan_ret;
@@ -770,6 +777,7 @@ int ObResultSet::do_close(int *client_ret)
     ret = OB_SUCCESS; // cmd mode always return true in close phase
   } else {
     // inner sql executor, no plan or cmd. do nothing.
+    LOG_DEBUG("AI_DBG do_close no plan no cmd", K(errcode_));
   }
   // open, get_next_row regardless of success, close must always be called
   // The following logic ensures that the error code output externally is the first one that appears. by xiaochu.yh

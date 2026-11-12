@@ -38,6 +38,7 @@
 #include "sql/resolver/ddl/ob_purge_stmt.h"
 #include "sql/resolver/ddl/ob_optimize_stmt.h"
 #include "sql/resolver/dml/ob_delete_resolver.h"
+#include "sql/engine/dml/ob_dml_service.h"
 #include "sql/engine/cmd/ob_partition_executor_utils.h"
 
 #include "sql/printer/ob_select_stmt_printer.h"
@@ -786,6 +787,15 @@ int ObAlterTableExecutor::execute(ObExecContext &ctx, ObAlterTableStmt &stmt)
       } else if (FALSE_IT(alter_table_arg.sql_mode_ = my_session->get_sql_mode())) {
         // do nothing
       } else if (FALSE_IT(alter_table_arg.parallelism_ = stmt.get_parallelism())) {
+      } else if (stmt.is_ai_column_retry()) {
+        // RETRY AI COLUMN does not change the schema, it only invalidates the
+        // selected rows and schedules their generation tasks.
+        if (OB_FAIL(ObDMLService::retry_ai_column_rows(
+                alter_table_arg.alter_table_schema_.get_table_id(),
+                stmt.get_ai_column_retry_column(),
+                stmt.get_ai_column_retry_predicate()))) {
+          LOG_WARN("failed to retry ai column", K(ret));
+        }
       } else if (OB_FAIL(check_alter_partition(ctx, stmt, alter_table_arg))) {
       } else if (OB_FAIL(check_alter_part_key(ctx, alter_table_arg))) {
       } else if (OB_FAIL(set_index_arg_list(ctx, stmt))) {

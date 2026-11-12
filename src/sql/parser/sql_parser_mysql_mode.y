@@ -371,6 +371,8 @@ END_P SET_VAR DELIMITER
         OPTIMIZER_COSTS
 
         ORGANIZATION
+
+        RETRY
 //-----------------------------non_reserved keyword end---------------------------------------------
 %type <node> sql_stmt stmt_list stmt opt_end_p
 %type <node> select_stmt update_stmt delete_stmt
@@ -14826,7 +14828,11 @@ alter_table_action
 ;
 
 alter_table_action:
-opt_set table_option_list_space_seperated
+RETRY AI COLUMN column_name opt_where
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_RETRY_AI_COLUMN, 2, $4, $5);
+}
+| opt_set table_option_list_space_seperated
 {
   (void)$1;
   merge_nodes($$, result, T_TABLE_OPTION_LIST, $2);
@@ -18093,6 +18099,7 @@ ACCOUNT
 |       RESTART
 |       RESTORE
 |       RESUME
+|       RETRY
 |       RETURNED_SQLSTATE
 |       RETURNING
 |       RETURNS

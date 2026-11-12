@@ -75,10 +75,19 @@ int ObOpenAIUtils::ObOpenAIComplete::get_body(common::ObIAllocator &allocator,
     ObJsonObject *body_obj = nullptr;
     ObJsonString *model_str = nullptr;
     ObJsonArray *messages_array = nullptr;
+    // a "system_prompt" key in the config becomes the system message
+    ObString system_prompt = prompt;
+    if (OB_NOT_NULL(config)) {
+      ObJsonNode *system_node = config->get_value(ObString::make_string("system_prompt"));
+      if (OB_NOT_NULL(system_node) && ObJsonNodeType::J_STRING == system_node->json_type()) {
+        system_prompt.assign_ptr(system_node->get_data(),
+                                 static_cast<int32_t>(system_node->get_data_length()));
+      }
+    }
     if (OB_FAIL(ObAIFuncJsonUtils::get_json_object(allocator, body_obj))) {
     } else if (OB_FAIL(ObAIFuncJsonUtils::get_json_string(allocator, model, model_str))) {
     } else if (OB_FAIL(body_obj->add("model", model_str))) {
-    } else if (OB_FAIL(construct_messages_array(allocator, prompt, content, messages_array))) {
+    } else if (OB_FAIL(construct_messages_array(allocator, system_prompt, content, messages_array))) {
     } else if (OB_FAIL(body_obj->add("messages", messages_array))) {
     } else if (OB_FAIL(ObAIFuncJsonUtils::compact_json_object(allocator, config, body_obj))) {
     } else {

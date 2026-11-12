@@ -509,7 +509,9 @@ int ObSqlTransControl::start_stmt(ObExecContext &exec_ctx)
   OX (session->get_trans_result().reset());
   OZ (get_tx_service(session, txs));
   OZ (acquire_tx_if_need_(txs, *session));
+  LOG_DEBUG("AI_DBG start_stmt acquire", K(ret));
   OZ (stmt_sanity_check_(session, plan, plan_ctx));
+  LOG_DEBUG("AI_DBG start_stmt sanity", K(ret));
   if (!ObSQLUtils::is_nested_sql(&exec_ctx)) {
     OX (data_plane::prepare_tx_for_statement(*session->get_tx_desc()));
   }
@@ -525,10 +527,12 @@ int ObSqlTransControl::start_stmt(ObExecContext &exec_ctx)
   if (OB_SUCC(ret) && !is_plain_select) {
     OZ (stmt_setup_savepoint_(session, das_ctx, plan_ctx, txs, nested_level),
         session_id, "tx_id", data_plane::tx_desc_id(tx_desc));
+    LOG_DEBUG("AI_DBG start_stmt savepoint", K(ret));
   }
 
   OZ (stmt_setup_snapshot_(session, das_ctx, plan, plan_ctx, txs, exec_ctx),
       session_id, "tx_id", data_plane::tx_desc_id(tx_desc));
+  LOG_DEBUG("AI_DBG start_stmt snapshot", K(ret));
 
   // add snapshot info to AuditRecord
   if (OB_SUCC(ret)) {
@@ -911,6 +915,8 @@ int ObSqlTransControl::end_stmt(ObExecContext &exec_ctx, const bool rollback, co
     // and then the closed of cursor will call end_stmt
     CK (OB_NOT_NULL(tx_desc));
   }
+  LOG_DEBUG("AI_DBG end_stmt pre", K(ret), K(savepoint), KP(tx_desc), K(need_rollback),
+            K(is_plain_select), "stmt_type", stmt_type, K(exec_errcode));
 
   // plain select stmt don't require txn descriptor
   if (OB_SUCC(ret) && !is_plain_select) {

@@ -56,6 +56,8 @@
 #include "pl_ddl/ob_pl_ddl_service.h"
 #include "parallel_ddl/ob_drop_table_helper.h" // ObDropTableHelper
 #include "rootserver/ob_ai_model_ddl_service.h"
+#include "share/ob_dml_sql_splicer.h"
+#include "share/inner_table/ob_inner_table_schema.h"
 #include "lib/utility/ob_print_utils.h"     // databuff_printf
 #include "share/ob_ex_rpc.h"
 
@@ -69,6 +71,169 @@ using namespace share::schema;
 using namespace storage;
 namespace rootserver
 {
+
+namespace {
+
+const char *const LOCAL_AI_COLUMN_META_PREFIX = "__AI_COLUMN__";
+const char LOCAL_AI_COLUMN_META_SEP = '\x1f';
+
+int get_local_ai_column_meta_field(const common::ObString &comment,
+                                   const int64_t field_idx,
+                                   common::ObString &value)
+{
+  int ret = OB_SUCCESS;
+  const int64_t prefix_len = static_cast<int64_t>(strlen(LOCAL_AI_COLUMN_META_PREFIX));
+  if (OB_UNLIKELY(field_idx < 0 || comment.length() <= prefix_len
+                  || !comment.prefix_match(
+                         common::ObString::make_string(LOCAL_AI_COLUMN_META_PREFIX)))) {
+    ret = OB_INVALID_ARGUMENT;
+  } else {
+    int64_t cur_field = 0;
+    int64_t start = prefix_len + 1;
+    int64_t pos = start;
+    for (; pos <= comment.length() && cur_field < field_idx; ++pos) {
+      if (pos == comment.length() || LOCAL_AI_COLUMN_META_SEP == comment[pos]) {
+        ++cur_field;
+        start = pos + 1;
+      }
+    }
+    if (cur_field != field_idx) {
+      ret = OB_ERR_UNEXPECTED;
+    } else {
+      int64_t end = start;
+      while (end < comment.length() && LOCAL_AI_COLUMN_META_SEP != comment[end]) {
+        ++end;
+      }
+      value.assign_ptr(comment.ptr() + start, static_cast<int32_t>(end - start));
+    }
+  }
+  return ret;
+}
+
+// Inserts one row into oceanbase.__all_ai_column for every ai column of the
+// table.  Called after the ddl has been applied so the assigned table id and
+// column ids are stable.
+int refresh_ai_column_metadata(common::ObMySQLProxy &proxy,
+                               const share::schema::ObTableSchema &table_schema,
+                               const uint64_t table_id)
+{
+  int ret = OB_SUCCESS;
+  const int64_t prefix_len = static_cast<int64_t>(strlen(LOCAL_AI_COLUMN_META_PREFIX));
+  bool has_ai_column = false;
+  for (int64_t i = 0; !has_ai_column && i < table_schema.get_column_count(); ++i) {
+    const share::schema::ObColumnSchemaV2 *col = table_schema.get_column_schema_by_idx(i);
+    if (OB_NOT_NULL(col) && col->get_comment_str().length() > prefix_len
+        && col->get_comment_str().prefix_match(
+               common::ObString::make_string(LOCAL_AI_COLUMN_META_PREFIX))) {
+      has_ai_column = true;
+    }
+  }
+  if (!has_ai_column) {
+    // nothing to register, and do not touch the inner table during bootstrap
+  } else if (OB_UNLIKELY(OB_INVALID_ID == table_id)) {
+    ret = OB_INVALID_ARGUMENT;
+  } else {
+    int64_t affected_rows = 0;
+    ObSqlString del_sql;
+    if (OB_FAIL(del_sql.append_fmt(
+            "delete from oceanbase.__all_ai_column where table_id = %lu", table_id))) {
+    } else if (OB_FAIL(proxy.write(del_sql.string(), affected_rows))) {
+      LOG_WARN("failed to delete ai column metadata", K(ret), K(table_id), K(del_sql));
+    }
+    for (int64_t i = 0; OB_SUCC(ret) && i < table_schema.get_column_count(); ++i) {
+      const share::schema::ObColumnSchemaV2 *col = table_schema.get_column_schema_by_idx(i);
+      if (OB_ISNULL(col)) {
+        ret = OB_ERR_UNEXPECTED;
+      } else {
+        const common::ObString &comment = col->get_comment_str();
+        if (comment.length() <= prefix_len
+            || !comment.prefix_match(
+                   common::ObString::make_string(LOCAL_AI_COLUMN_META_PREFIX))) {
+          continue;
+        }
+        common::ObString model_name;
+        common::ObString max_retries_str;
+        common::ObString sync_mode;
+        common::ObString result_type;
+        common::ObString vector_dim_str;
+        common::ObString dependency_columns;
+        common::ObString state_name;
+        common::ObString request_name;
+        common::ObString spec_name;
+        common::ObString normalized_expr;
+        const share::schema::ObColumnSchemaV2 *state_col = NULL;
+        const share::schema::ObColumnSchemaV2 *request_col = NULL;
+        const share::schema::ObColumnSchemaV2 *spec_col = NULL;
+        if (OB_FAIL(get_local_ai_column_meta_field(comment, 0, model_name))) {
+        } else if (OB_FAIL(get_local_ai_column_meta_field(comment, 1, max_retries_str))) {
+        } else if (OB_FAIL(get_local_ai_column_meta_field(comment, 2, sync_mode))) {
+        } else if (OB_FAIL(get_local_ai_column_meta_field(comment, 3, result_type))) {
+        } else if (OB_FAIL(get_local_ai_column_meta_field(comment, 4, vector_dim_str))) {
+        } else if (OB_FAIL(get_local_ai_column_meta_field(comment, 5, dependency_columns))) {
+        } else if (OB_FAIL(get_local_ai_column_meta_field(comment, 6, state_name))) {
+        } else if (OB_FAIL(get_local_ai_column_meta_field(comment, 7, request_name))) {
+        } else if (OB_FAIL(get_local_ai_column_meta_field(comment, 8, spec_name))) {
+        } else if (OB_FAIL(get_local_ai_column_meta_field(comment, 9, normalized_expr))) {
+        } else if (OB_ISNULL(state_col = table_schema.get_column_schema(state_name))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("ai column state column not found", K(ret), K(state_name));
+        } else if (OB_ISNULL(request_col = table_schema.get_column_schema(request_name))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("ai column request column not found", K(ret), K(request_name));
+        } else if (OB_ISNULL(spec_col = table_schema.get_column_schema(spec_name))) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("ai column result spec column not found", K(ret), K(spec_name));
+        } else {
+          int64_t max_retries = 0;
+          int64_t vector_dim = 0;
+          char tmp_buf[32] = {0};
+          if (max_retries_str.length() > 0) {
+            snprintf(tmp_buf, sizeof(tmp_buf), "%.*s",
+                     max_retries_str.length(), max_retries_str.ptr());
+            max_retries = atoll(tmp_buf);
+          }
+          if (vector_dim_str.length() > 0) {
+            snprintf(tmp_buf, sizeof(tmp_buf), "%.*s",
+                     vector_dim_str.length(), vector_dim_str.ptr());
+            vector_dim = atoll(tmp_buf);
+          }
+          share::ObDMLSqlSplicer splicer;
+          ObSqlString insert_sql;
+          if (OB_FAIL(splicer.add_column("table_id", static_cast<int64_t>(table_id)))) {
+          } else if (OB_FAIL(splicer.add_column("column_id",
+                                                static_cast<int64_t>(col->get_column_id())))) {
+          } else if (OB_FAIL(splicer.add_column("column_name",
+                                                ObHexEscapeSqlStr(col->get_column_name())))) {
+          } else if (OB_FAIL(splicer.add_column("state_column_id",
+                                                static_cast<int64_t>(state_col->get_column_id())))) {
+          } else if (OB_FAIL(splicer.add_column("request_column_id",
+                                                static_cast<int64_t>(request_col->get_column_id())))) {
+          } else if (OB_FAIL(splicer.add_column("result_spec_column_id",
+                                                static_cast<int64_t>(spec_col->get_column_id())))) {
+          } else if (OB_FAIL(splicer.add_column("max_retries", max_retries))) {
+          } else if (OB_FAIL(splicer.add_column("sync_mode", ObHexEscapeSqlStr(sync_mode)))) {
+          } else if (OB_FAIL(splicer.add_column("model_name", ObHexEscapeSqlStr(model_name)))) {
+          } else if (OB_FAIL(splicer.add_column("result_type", ObHexEscapeSqlStr(result_type)))) {
+          } else if (OB_FAIL(splicer.add_column("vector_dimension", vector_dim))) {
+          } else if (OB_FAIL(splicer.add_column("dependency_columns",
+                                                ObHexEscapeSqlStr(dependency_columns)))) {
+          } else if (OB_FAIL(splicer.add_column("normalized_expr",
+                                                ObHexEscapeSqlStr(normalized_expr)))) {
+          } else if (OB_FAIL(splicer.splice_insert_sql(OB_ALL_AI_COLUMN_TNAME, insert_sql))) {
+          } else if (OB_FAIL(proxy.write(insert_sql.string(), affected_rows))) {
+            LOG_WARN("failed to insert ai column metadata", K(ret), K(insert_sql));
+          } else if (1 != affected_rows) {
+            ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("unexpected affected rows for ai column metadata", K(ret), K(affected_rows));
+          }
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+}  // namespace
 
 int ObLocalManagementService::check_partition_exchange_schema_for_user(
     const share::schema::ObTableSchema &base_table_schema,
@@ -662,6 +827,7 @@ int ObLocalManagementService::parallel_create_table(const ObCreateTableArg &arg,
     if (OB_FAIL(ret)) {
     } else if (OB_FAIL(create_table_helper.init(ddl_service_))) {
     } else if (OB_FAIL(create_table_helper.execute())) {
+    } else if (OB_FAIL(refresh_ai_column_metadata(sql_proxy_, arg.schema_, res.table_id_))) {
     }
   }
   int64_t cost = ObTimeUtility::current_time() - begin_time;
@@ -692,6 +858,7 @@ int ObLocalManagementService::create_table(const ObCreateTableArg &arg, ObCreate
     ObCreateTableHelper create_table_helper(schema_service_, arg, res, nullptr/*external trans*/, false /*is_parallel*/);
     if (OB_FAIL(create_table_helper.init(ddl_service_))) {
     } else if (OB_FAIL(create_table_helper.execute())) {
+    } else if (OB_FAIL(refresh_ai_column_metadata(sql_proxy_, arg.schema_, res.table_id_))) {
     }
   }
   int64_t cost = ObTimeUtility::current_time() - begin_time;
@@ -1056,6 +1223,16 @@ int ObLocalManagementService::alter_table(const obcall::ObAlterTableArg &arg, ob
         ret = OB_ERR_UNEXPECTED;
       } else {
         res.schema_version_ = simple_table_schema->get_schema_version();
+      }
+      if (OB_SUCC(ret) && OB_INVALID_ID != arg.alter_table_schema_.get_table_id()) {
+        const share::schema::ObTableSchema *altered_table_schema = NULL;
+        if (OB_FAIL(schema_guard.get_table_schema(
+                arg.alter_table_schema_.get_table_id(), altered_table_schema))) {
+        } else if (OB_NOT_NULL(altered_table_schema)
+                   && OB_FAIL(refresh_ai_column_metadata(sql_proxy_,
+                                                        *altered_table_schema,
+                                                        altered_table_schema->get_table_id()))) {
+        }
       }
     }
   }

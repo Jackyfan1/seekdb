@@ -637,12 +637,19 @@ int ObTableModifyOp::inner_open()
 {
   int ret = OB_SUCCESS;
   ObSQLSessionInfo *my_session = GET_MY_SESSION(ctx_);
+  LOG_DEBUG("AI_DBG inner_open enter", "has_nested_sql", MY_SPEC.plan_->has_nested_sql(),
+            K(ret));
   if (OB_FAIL(init_foreign_key_operation())) {
+    LOG_DEBUG("AI_DBG init_foreign_key_operation failed", K(ret));
   } else if (MY_SPEC.plan_->has_nested_sql() && OB_FAIL(open_inner_conn())) {
+    LOG_DEBUG("AI_DBG open_inner_conn failed", K(ret));
   } else if (OB_FAIL(calc_single_table_loc())) {
+    LOG_DEBUG("AI_DBG calc_single_table_loc failed", K(ret));
   } else if (OB_FAIL(check_need_exec_single_row())) {
+    LOG_DEBUG("AI_DBG check_need_exec_single_row failed", K(ret));
   } else {
     init_das_dml_ctx();
+    LOG_DEBUG("AI_DBG inner_open done");
   }
   return ret;
 }
@@ -997,6 +1004,61 @@ int ObTableModifyOp::execute_write(const char *sql)
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_FAIL(inner_conn_->execute_write(sql, affected_rows))) {
   }
+  LOG_DEBUG("AI_DBG execute_write done", K(ret), K(affected_rows));
+  return ret;
+}
+
+int ObTableModifyOp::add_ai_dml_sql(ObIAllocator &alloc, const ObString &sql)
+{
+  int ret = OB_SUCCESS;
+  ObString copy;
+  if (OB_FAIL(ob_write_string(alloc, sql, copy))) {
+  } else if (OB_FAIL(ai_dml_sqls_.push_back(copy))) {
+  }
+  return ret;
+}
+
+int ObTableModifyOp::execute_ai_dml_sqls()
+{
+  int ret = OB_SUCCESS;
+  if (!ai_dml_sqls_.empty()) {
+    ObArenaAllocator tmp_alloc("AiColumnDml");
+    // Mark the hosted statements as nested SQL.  Nested statements must not
+    // manage their own savepoint / implicit commit, exactly like the foreign
+    // key cascade statements.
+    ObDASCtx &das_ctx = get_exec_ctx().get_das_ctx();
+    const uint64_t saved_fk_cascading = das_ctx.is_fk_cascading_;
+    das_ctx.is_fk_cascading_ = 1;
+    if (OB_FAIL(open_inner_conn())) {
+      LOG_WARN("failed to open inner conn for ai column dml", K(ret));
+    }
+    for (int64_t i = 0; OB_SUCC(ret) && i < ai_dml_sqls_.count(); ++i) {
+      const ObString &sql = ai_dml_sqls_.at(i);
+      char *buf = static_cast<char *>(tmp_alloc.alloc(sql.length() + 1));
+      if (OB_ISNULL(buf)) {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      } else {
+        MEMCPY(buf, sql.ptr(), sql.length());
+        buf[sql.length()] = '\0';
+        if (OB_FAIL(begin_nested_session(false))) {
+          LOG_DEBUG("AI_DBG begin nested failed", K(ret));
+        } else {
+          int write_ret = execute_write(buf);
+          int end_ret = end_nested_session();
+          LOG_DEBUG("AI_DBG ai dml executed", K(write_ret), K(end_ret), K(sql));
+          if (OB_SUCCESS != write_ret) {
+            ret = write_ret;
+            LOG_DEBUG("AI_DBG ai dml write failed", K(ret));
+          } else if (OB_SUCCESS != end_ret) {
+            ret = end_ret;
+            LOG_DEBUG("AI_DBG ai dml end nested failed", K(ret));
+          }
+        }
+      }
+    }
+    das_ctx.is_fk_cascading_ = saved_fk_cascading;
+    ai_dml_sqls_.reset();
+  }
   return ret;
 }
 
@@ -1057,6 +1119,7 @@ int ObTableModifyOp::submit_all_dml_task()
     } else if (OB_FAIL(dml_rtctx_.das_ref_.execute_all_task())) {
     } else if (OB_FAIL(dml_rtctx_.das_ref_.close_all_task())) {
     } else if (OB_FAIL(ObDMLService::handle_after_row_processing(this, &get_dml_modify_row_list()))) {
+    } else if (OB_FAIL(execute_ai_dml_sqls())) {
     } else {
       dml_modify_rows_.clear();
       dml_rtctx_.reuse();

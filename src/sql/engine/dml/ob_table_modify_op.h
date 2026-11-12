@@ -230,6 +230,10 @@ public:
   int begin_nested_session(bool skip_cur_stmt_tables);
   int end_nested_session();
   int execute_write(const char *sql);
+  // deferred ai column dml statements (task rows and result invalidation),
+  // executed once all rows of the statement have been written to the storage
+  int add_ai_dml_sql(common::ObIAllocator &alloc, const common::ObString &sql);
+  int execute_ai_dml_sqls();
   int execute_read(const char *sql, common::ObMySQLProxy::MySQLResult &res);
   int check_stack();
   bool is_nested_session() { return ObSQLUtils::is_nested_sql(&ctx_); }
@@ -250,6 +254,7 @@ public:
   void clear_dml_evaluated_flag(ObExpr *clear_expr);
 
   ObDMLModifyRowsList& get_dml_modify_row_list() { return dml_modify_rows_;}
+  common::ObSEArray<common::ObString, 8> ai_dml_sqls_;
   int submit_all_dml_task();
 
   int perform_batch_fk_check();

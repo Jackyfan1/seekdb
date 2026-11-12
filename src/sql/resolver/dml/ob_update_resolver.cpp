@@ -150,6 +150,8 @@ int ObUpdateResolver::resolve(const ParseNode &parse_tree)
     } else if (OB_FAIL(check_safe_update_mode(update_stmt))) {
     } else { /*do nothing*/ }
   }
+  if (OB_SUCC(ret) && OB_FAIL(check_ai_column_strict_read())) {
+  }
   return ret;
 }
 
