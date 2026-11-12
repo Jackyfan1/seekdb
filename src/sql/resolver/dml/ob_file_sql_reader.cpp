@@ -558,6 +558,19 @@ static int parse_csv_content(const ObString &content,
   return ret;
 }
 
+static bool csv_name_exists(const ObSEArray<FileSqlColumn, 8> &columns, const ObString &name)
+{
+  bool found = false;
+  for (int64_t i = 0; !found && i < columns.count(); ++i) {
+    const ObString &existing = columns.at(i).name_;
+    if (existing.length() == name.length()
+        && (0 == name.length() || 0 == MEMCMP(existing.ptr(), name.ptr(), name.length()))) {
+      found = true;
+    }
+  }
+  return found;
+}
+
 static int infer_csv_schema(const ObSEArray<CsvRow, 32> &rows,
                             const bool has_header,
                             const ObSQLSessionInfo *session,
@@ -573,9 +586,28 @@ static int infer_csv_schema(const ObSEArray<CsvRow, 32> &rows,
     FileSqlColumn column;
     column.type_ = FILE_SQL_NULL;
     column.length_ = 1;
+    // A csv column is nullable only when a null value is actually seen while
+    // inferring the schema, which matches duckdb DESCRIBE output.
+    column.nullable_ = false;
     if (has_header) {
-      const ObString &name = rows.at(0).fields_.at(i).value_;
+      const ObString name = rows.at(0).fields_.at(i).value_;
       if (OB_FAIL(copy_string(name, allocator, column.name_))) {
+      } else {
+        // duckdb style duplicate header handling: id, id__2, id__3, ...
+        int64_t suffix = 2;
+        while (OB_SUCC(ret) && csv_name_exists(columns, column.name_)) {
+          char buffer[256];
+          int len = snprintf(buffer, sizeof(buffer), "%.*s__%ld",
+                             static_cast<int>(name.length()), name.ptr(), suffix++);
+          if (len <= 0 || len >= static_cast<int>(sizeof(buffer))) {
+            ret = OB_INVALID_ARGUMENT;
+            LOG_USER_ERROR(OB_INVALID_ARGUMENT, "read_csv, invalid column name");
+          } else {
+            ObString candidate(len, buffer);
+            if (OB_FAIL(copy_string(candidate, allocator, column.name_))) {
+            }
+          }
+        }
       }
     }
     if (OB_FAIL(ret)) {

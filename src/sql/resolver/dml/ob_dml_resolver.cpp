@@ -3422,7 +3422,47 @@ int ObDMLResolver::extract_var_init_exprs(ObSelectStmt *ref_query, ObIArray<ObRa
   return ret;
 }
 
+static int get_file_table_param_value(const ParseNode *value_node,
+                                      const ParamStore *param_list,
+                                      ObObjParam &param_value)
+{
+  int ret = OB_SUCCESS;
+  if (OB_ISNULL(value_node)) {
+    ret = OB_ERR_UNEXPECTED;
+  } else if (T_QUESTIONMARK == value_node->type_) {
+    const int64_t param_idx = value_node->value_;
+    if (OB_ISNULL(param_list) || param_idx < 0 || param_idx >= param_list->count()) {
+      ret = OB_ERR_NOT_ALL_VARIABLE_BIND;
+      LOG_WARN("question mark index out of param list count", K(ret), K(param_idx));
+    } else {
+      param_value = param_list->at(param_idx);
+    }
+  } else {
+    switch (value_node->type_) {
+      case T_INT:
+      case T_BOOL:
+        param_value.set_int(value_node->value_);
+        break;
+      case T_VARCHAR:
+      case T_CHAR:
+      case T_IDENT: {
+        ObString str_value;
+        str_value.assign_ptr(value_node->str_value_, static_cast<int32_t>(value_node->str_len_));
+        param_value.set_varchar(str_value);
+        param_value.set_collation_type(CS_TYPE_UTF8MB4_BIN);
+        param_value.set_collation_level(CS_LEVEL_IMPLICIT);
+        break;
+      }
+      default:
+        ret = OB_INVALID_ARGUMENT;
+        break;
+    }
+  }
+  return ret;
+}
+
 static int get_file_table_option_value(const ParseNode *value_node,
+                                       const ParamStore *param_list,
                                        int64_t &int_value,
                                        ObString &str_value,
                                        bool &is_string)
@@ -3432,30 +3472,25 @@ static int get_file_table_option_value(const ParseNode *value_node,
   int_value = 0;
   if (OB_ISNULL(value_node)) {
     ret = OB_ERR_UNEXPECTED;
+  } else if (T_OP_NEG == value_node->type_) {
+    const ParseNode *child = (NULL == value_node->children_) ? NULL : value_node->children_[0];
+    ObObjParam param_value;
+    if (OB_FAIL(get_file_table_param_value(child, param_list, param_value))) {
+    } else if (!param_value.is_integer_type()) {
+      ret = OB_INVALID_ARGUMENT;
+    } else {
+      int_value = -param_value.get_int();
+    }
   } else {
-    switch (value_node->type_) {
-      case T_INT:
-      case T_BOOL:
-        int_value = value_node->value_;
-        break;
-      case T_OP_NEG: {
-        const ParseNode *child = (NULL == value_node->children_) ? NULL : value_node->children_[0];
-        if (OB_ISNULL(child) || T_INT != child->type_) {
-          ret = OB_INVALID_ARGUMENT;
-        } else {
-          int_value = -child->value_;
-        }
-        break;
-      }
-      case T_VARCHAR:
-      case T_CHAR:
-      case T_IDENT:
-        str_value.assign_ptr(value_node->str_value_, static_cast<int32_t>(value_node->str_len_));
-        is_string = true;
-        break;
-      default:
-        ret = OB_INVALID_ARGUMENT;
-        break;
+    ObObjParam param_value;
+    if (OB_FAIL(get_file_table_param_value(value_node, param_list, param_value))) {
+    } else if (param_value.is_string_type()) {
+      str_value = param_value.get_string();
+      is_string = true;
+    } else if (param_value.is_integer_type()) {
+      int_value = param_value.get_int();
+    } else {
+      ret = OB_INVALID_ARGUMENT;
     }
   }
   return ret;
@@ -3539,8 +3574,8 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_node,
       int64_t int_value = 0;
       ObString str_value;
       bool is_string = false;
-      if (OB_FAIL(get_file_table_option_value(arg_node->children_[1], int_value,
-                                              str_value, is_string))) {
+      if (OB_FAIL(get_file_table_option_value(arg_node->children_[1], params_.param_list_,
+                                              int_value, str_value, is_string))) {
         LOG_USER_ERROR(OB_INVALID_ARGUMENT, "file table, invalid option value");
       } else if (0 == option_name.case_compare("header")) {
         if (is_string) {
@@ -3586,8 +3621,8 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_node,
         }
       } else if (0 == option_name.case_compare("sample_size")) {
         if (is_string || -1 != int_value) {
-          ret = OB_INVALID_ARGUMENT;
-          LOG_USER_ERROR(OB_INVALID_ARGUMENT, "file table, sample_size only supports -1");
+          ret = OB_NOT_SUPPORTED;
+          LOG_USER_ERROR(OB_NOT_SUPPORTED, "file table, sample_size only supports -1");
         } else {
           options.sample_size_ = int_value;
         }
@@ -3634,8 +3669,8 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_node,
     ret = OB_NOT_INIT;
   } else if (OB_FAIL(session_info_->get_enable_file_sql(enable_file_sql))) {
   } else if (!enable_file_sql) {
-    ret = OB_INVALID_ARGUMENT;
-    LOG_USER_ERROR(OB_INVALID_ARGUMENT, "file table, enable_file_sql is disabled");
+    ret = OB_NOT_SUPPORTED;
+    LOG_USER_ERROR(OB_NOT_SUPPORTED, "file table, enable_file_sql is disabled");
   } else if (OB_FAIL(session_info_->get_secure_file_priv(secure_file_priv))) {
   } else if (OB_FAIL(ObResolverUtils::check_secure_path(secure_file_priv, path))) {
     LOG_WARN("file path is not allowed by secure_file_priv", K(ret), K(path), K(secure_file_priv));
@@ -3677,10 +3712,11 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_node,
           res_type.set_accuracy(ObAccuracy(1, 0));
         } else if (file_sql::FILE_SQL_DATE == column.type_) {
           res_type.set_type(ObDateType);
-          res_type.set_accuracy(ObAccuracy::DDL_DEFAULT_ACCURACY[ObDateType]);
+          res_type.set_accuracy(ObAccuracy(10, 0));
         } else if (file_sql::FILE_SQL_DATETIME == column.type_) {
           res_type.set_type(ObDateTimeType);
-          res_type.set_accuracy(ObAccuracy::DDL_DEFAULT_ACCURACY[ObDateTimeType]);
+          // no fractional seconds are inferred from the file content
+          res_type.set_accuracy(ObAccuracy(19, 0));
         } else {
           int64_t length = column.length_ > 0 ? column.length_ : 1;
           res_type.set_type(ObVarcharType);
@@ -3695,6 +3731,13 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_node,
         }
         if (OB_FAIL(ret)) {
         } else if (OB_FAIL(table_def->column_types_.push_back(res_type))) {
+        }
+        // The optimizer requires per-column statistics for every values table,
+        // otherwise plan generation fails with OB_ALLOCATE_MEMORY_FAILED.
+        if (OB_FAIL(ret)) {
+        } else if (OB_FAIL(table_def->column_ndvs_.push_back(
+                     static_cast<double>(file_table.row_cnt_)))) {
+        } else if (OB_FAIL(table_def->column_nnvs_.push_back(0))) {
         }
       }
       for (int64_t i = 0; OB_SUCC(ret) && i < file_table.values_.count(); ++i) {
@@ -3809,6 +3852,26 @@ int ObDMLResolver::resolve_str_const(const ParseNode &parse_tree, ObString& path
                                              enable_mysql_compatible_dates,
                                              session_info->get_min_const_integer_precision(),
                                              nullptr != params_.secondary_namespace_))) {
+  }
+  // A literal may be parameterized into a question mark by the sql plan cache, in
+  // which case the real value only exists in the param store.
+  if (OB_FAIL(ret)) {
+  } else if (val.is_unknown()) {
+    const int64_t param_idx = val.get_unknown();
+    if (OB_ISNULL(params_.param_list_) || param_idx < 0
+        || param_idx >= params_.param_list_->count()) {
+      ret = OB_ERR_NOT_ALL_VARIABLE_BIND;
+      LOG_WARN("question mark index out of param list count", K(ret), K(param_idx));
+    } else {
+      val = params_.param_list_->at(param_idx);
+    }
+  }
+  if (OB_FAIL(ret)) {
+  } else if (!val.is_string_type()) {
+    ret = OB_ERR_INVALID_TYPE_FOR_OP;
+    LOG_WARN("file table path should be a string", K(ret), K(val));
+  } else if (val.get_string().empty()) {
+    path_str.reset();
   } else if (OB_ISNULL(buf = static_cast<char*>(allocator_->alloc(val.get_string().length())))) { // deep copy str value
     ret = common::OB_ALLOCATE_MEMORY_FAILED;
   } else {

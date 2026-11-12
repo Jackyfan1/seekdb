@@ -312,6 +312,11 @@ int ObExplainResolver::build_describe_stmt(const ObSelectStmt &described_stmt,
       res_type.set_accuracy(ObAccuracy(512));
       if (OB_FAIL(table_def->column_types_.push_back(res_type))) {
         LOG_WARN("failed to push describe column type", K(ret));
+      } else if (OB_FAIL(table_def->column_ndvs_.push_back(
+                   static_cast<double>(table_def->row_cnt_)))) {
+        LOG_WARN("failed to push describe column ndv", K(ret));
+      } else if (OB_FAIL(table_def->column_nnvs_.push_back(0))) {
+        LOG_WARN("failed to push describe column nnv", K(ret));
       }
     }
     for (int64_t i = 0; OB_SUCC(ret) && i < select_items.count(); ++i) {
