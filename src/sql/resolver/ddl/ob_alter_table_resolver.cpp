@@ -3544,6 +3544,9 @@ int ObAlterTableResolver::resolve_alter_table_column_definition(AlterColumnSchem
     if (OB_UNLIKELY(GEN_COLUMN_DEFINITION_NUM_CHILD == node->num_child_)) {
     // generated column with pos_column
       pos_node = node->children_[5];
+    } else if (OB_UNLIKELY(AI_COLUMN_DEFINITION_NUM_CHILD == node->num_child_)) {
+      // ai column with pos_column, the WITH options are kept in slot 5
+      pos_node = node->children_[6];
     } else {
       // normal column with pos_column
       pos_node = node->children_[3];

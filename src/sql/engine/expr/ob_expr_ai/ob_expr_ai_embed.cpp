@@ -90,6 +90,29 @@ static bool ai_embed_same_string(const ObString &lhs, const ObString &rhs)
          && (0 == lhs.length() || 0 == MEMCMP(lhs.ptr(), rhs.ptr(), lhs.length()));
 }
 
+// The embedding result returned by the provider is json text, while a datum whose
+// type is json must carry binary json. Convert the text before packing it into
+// the result datum, otherwise every consumer of the value fails.
+static int pack_ai_embed_json_result(const ObExpr &expr,
+                                     ObEvalCtx &ctx,
+                                     ObIAllocator &allocator,
+                                     const ObString &result,
+                                     ObDatum &res)
+{
+  int ret = OB_SUCCESS;
+  ObIJsonBase *json_doc = nullptr;
+  if (OB_FAIL(ObJsonBaseFactory::get_json_base(&allocator,
+                                               result,
+                                               ObJsonInType::JSON_TREE,
+                                               ObJsonInType::JSON_BIN,
+                                               json_doc))) {
+    LOG_WARN("failed to parse embedding json result", K(ret), K(result.length()));
+  } else if (OB_FAIL(ObJsonExprHelper::pack_json_res(expr, ctx, allocator, json_doc, res))) {
+    LOG_WARN("failed to pack embedding json result", K(ret));
+  }
+  return ret;
+}
+
 int ObExprAIEmbed::eval_ai_embed(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &res) 
 {
   INIT_SUCC(ret);
@@ -99,8 +122,7 @@ int ObExprAIEmbed::eval_ai_embed(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &re
   if (expr.arg_cnt_ == 3 ? OB_FAIL(expr.eval_param_value(ctx, arg_model_id, arg_content, arg_dim))
                          : OB_FAIL(expr.eval_param_value(ctx, arg_model_id, arg_content))) {
   } else if (arg_model_id->is_null() || arg_content->is_null()) {
-    ret = OB_INVALID_ARGUMENT;
-    LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_embed, model id or content is null");
+    // NULL input propagates to a NULL result without raising an error.
     res.set_null();
   } else {
     ObEvalCtx::TempAllocGuard tmp_alloc_g(ctx);
@@ -150,7 +172,7 @@ int ObExprAIEmbed::eval_ai_embed(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &re
       ObAIFuncModel model(temp_allocator, *info, *endpoint_info);
       ObString result;
       if (OB_FAIL(model.call_dense_embedding(content, config, result))) {
-      } else if (OB_FAIL(ObJsonExprHelper::pack_json_str_res(expr, ctx, res, result))) {
+      } else if (OB_FAIL(pack_ai_embed_json_result(expr, ctx, temp_allocator, result, res))) {
       }
     }
   }
@@ -301,8 +323,8 @@ int ObExprAIEmbed::eval_ai_embed_batch(const ObExpr &expr,
         int tmp_ret = model.call_dense_embedding_vector_v2(group_contents, config, group_results);
         if (OB_SUCCESS == tmp_ret && group_results.count() == group_contents.count()) {
           for (int64_t k = 0; OB_SUCC(ret) && k < group_results.count(); ++k) {
-            if (OB_FAIL(ObJsonExprHelper::pack_json_str_res(
-                    expr, ctx, *res_datum.at(group_rows[k]), group_results[k]))) {
+            if (OB_FAIL(pack_ai_embed_json_result(
+                    expr, ctx, temp_allocator, group_results[k], *res_datum.at(group_rows[k])))) {
               LOG_WARN("failed to pack embedding result", K(ret), K(k));
             }
           }
@@ -316,8 +338,8 @@ int ObExprAIEmbed::eval_ai_embed_batch(const ObExpr &expr,
             ObString single_result;
             if (OB_FAIL(model.call_dense_embedding(group_contents[k], config, single_result))) {
               LOG_WARN("failed to embed single input", K(ret), K(k));
-            } else if (OB_FAIL(ObJsonExprHelper::pack_json_str_res(
-                           expr, ctx, *res_datum.at(group_rows[k]), single_result))) {
+            } else if (OB_FAIL(pack_ai_embed_json_result(
+                           expr, ctx, temp_allocator, single_result, *res_datum.at(group_rows[k])))) {
               LOG_WARN("failed to pack embedding result", K(ret), K(k));
             }
           }

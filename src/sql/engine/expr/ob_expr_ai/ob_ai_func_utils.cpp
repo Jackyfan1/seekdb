@@ -297,7 +297,13 @@ int ObOllamaUtils::get_header(common::ObIAllocator &allocator,
                               common::ObArray<ObString> &headers) 
 {
   int ret = OB_SUCCESS;
-  // ollama header is empty, do nothing
+  // Ollama does not need an Authorization header, but the http client requires
+  // at least one header to be present.
+  ObString content_type_str("Content-Type: application/json");
+  ObString content_type_c_str;
+  if (OB_FAIL(ob_write_string(allocator, content_type_str, content_type_c_str, true))) {
+  } else if (OB_FAIL(headers.push_back(content_type_c_str))) {
+  }
   return ret;
 }
 
@@ -1133,6 +1139,7 @@ int ObAIFuncUtils::get_embed_provider(ObIAllocator &allocator, const ObString &p
   } else if (ob_provider_check(provider, ObAIFuncProviderUtils::OLLAMA)) {
     embed_provider = OB_NEWx(ObOllamaUtils::ObOllamaEmbed, &allocator);
   } else {
+    LOG_WARN("AIEMBED_DEBUG unsupported embed provider", K(provider));
     ret = OB_NOT_SUPPORTED;
     LOG_USER_ERROR(OB_NOT_SUPPORTED, "this provider current is");
   } 
@@ -1730,7 +1737,7 @@ int ObAIFuncPromptObjectUtils::replace_all_str_args_in_template(ObIAllocator &al
               }
             } else {
               ObString arg_value;
-              if (OB_FAIL(arg_node->get_raw_binary(arg_value, &allocator))) {
+              if (OB_FAIL(ObAIFuncJsonUtils::print_json_to_str(allocator, arg_node, arg_value))) {
               } else if (OB_FAIL(result_buf.append(arg_value))) {
               }
             }

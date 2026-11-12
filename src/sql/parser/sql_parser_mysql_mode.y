@@ -396,7 +396,7 @@ END_P SET_VAR DELIMITER
 %type <node> update_asgn_list update_asgn_factor
 %type <node> update_basic_stmt delete_basic_stmt
 %type <node> table_element_list table_element column_definition column_definition_ref column_definition_list column_name_list
-%type <node> opt_generated_keyname opt_generated_option_list opt_generated_column_attribute_list generated_column_attribute opt_storage_type
+%type <node> opt_generated_keyname opt_generated_option_list opt_generated_column_attribute_list generated_column_attribute opt_storage_type opt_ai_column_options
 %type <node> data_type special_table_type opt_if_not_exists opt_if_exists opt_charset collation opt_collation cast_data_type
 %type <node> replace_with_opt_hint insert_with_opt_hint column_list opt_on_duplicate_key_clause opt_into opt_replace opt_temporary no_param_column_ref
 %type <node> insert_vals_list insert_vals value_or_values opt_insert_row_alias
@@ -4852,27 +4852,17 @@ column_definition_ref data_type opt_column_attribute_list opt_column_reference o
   merge_nodes(attributes, result, T_COLUMN_ATTRIBUTES, $10);
   malloc_non_terminal_node($$, result->malloc_pool_, T_COLUMN_DEFINITION, 7, $1, $2, attributes, $7, $9, $12, $4);
 }
-| column_definition_ref data_type AI COLUMN '(' expr ')' WITH '(' expr_list ')' opt_generated_column_attribute_list opt_column_reference opt_position_column
+| column_definition_ref data_type AI COLUMN '(' expr ')' opt_ai_column_options opt_generated_column_attribute_list opt_column_reference opt_position_column
 {
-  (void)($13);
+  (void)($10);
   ParseNode *attributes = NULL;
   ParseNode *storage_type = NULL;
-  set_data_type_collation($2, NULL, true, false);
+  ParseNode *no_collation = NULL;
+  set_data_type_collation($2, no_collation, true, false);
   dup_expr_string($6, result, @6.first_column, @6.last_column);
-  merge_nodes(attributes, result, T_COLUMN_ATTRIBUTES, $12);
+  merge_nodes(attributes, result, T_COLUMN_ATTRIBUTES, $9);
   malloc_terminal_node(storage_type, result->malloc_pool_, T_STORED_COLUMN);
-  malloc_non_terminal_node($$, result->malloc_pool_, T_COLUMN_DEFINITION, 7, $1, $2, attributes, $6, storage_type, $14, NULL);
-}
-| column_definition_ref data_type AI COLUMN '(' expr ')' opt_generated_column_attribute_list opt_column_reference opt_position_column
-{
-  (void)($9);
-  ParseNode *attributes = NULL;
-  ParseNode *storage_type = NULL;
-  set_data_type_collation($2, NULL, true, false);
-  dup_expr_string($6, result, @6.first_column, @6.last_column);
-  merge_nodes(attributes, result, T_COLUMN_ATTRIBUTES, $8);
-  malloc_terminal_node(storage_type, result->malloc_pool_, T_STORED_COLUMN);
-  malloc_non_terminal_node($$, result->malloc_pool_, T_COLUMN_DEFINITION, 7, $1, $2, attributes, $6, storage_type, $10, NULL);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_COLUMN_DEFINITION, 8, $1, $2, attributes, $6, storage_type, $8, $11, NULL);
 }
 | column_definition_ref SERIAL opt_column_attribute_list opt_position_column 
 {
@@ -4950,6 +4940,17 @@ opt_generated_option_list:
 ALWAYS
 {
   malloc_terminal_node($$, result->malloc_pool_, T_CONSTR_ALWAYS);
+}
+;
+
+opt_ai_column_options:
+  /*empty*/
+{
+  $$ = NULL;
+}
+| WITH '(' expr_list ')'
+{
+  $$ = $3;
 }
 ;
 

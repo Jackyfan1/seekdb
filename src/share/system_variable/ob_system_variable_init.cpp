@@ -338,16 +338,6 @@ static struct VarsInit{
     }();
 
     [&] (){
-      ObSysVars[15].default_value_ = "281018368" ;
-      ObSysVars[15].on_update_func_ = "ObSysVarOnUpdateFuncs::update_sql_mode" ;
-      ObSysVars[15].name_ = "sql_mode" ;
-      ObSysVars[15].data_type_ = ObUInt64Type ;
-      ObSysVars[15].to_show_str_func_ = "ObSysVarToStrFuncs::to_str_sql_mode" ;
-      ObSysVars[15].info_ = "" ;
-      ObSysVars[15].flags_ = ObSysVarFlag::GLOBAL_SCOPE | ObSysVarFlag::SESSION_SCOPE | ObSysVarFlag::INFLUENCE_PLAN | ObSysVarFlag::NEED_SERIALIZE | ObSysVarFlag::MYSQL_ONLY ;
-      ObSysVars[15].base_class_ = "ObSqlModeVar" ;
-      ObSysVars[15].to_select_obj_func_ = "ObSysVarToObjFuncs::to_obj_sql_mode" ;
-      ObSysVars[15].on_check_and_convert_func_ = "ObSysVarOnCheckFuncs::check_and_convert_sql_mode" ;
       ObSysVars[15].id_ = SYS_VAR_SQL_MODE ;
       cur_max_var_id = MAX(cur_max_var_id, static_cast<int64_t>(SYS_VAR_SQL_MODE)) ;
       ObSysVarsIdToArrayIdx[SYS_VAR_SQL_MODE] = 15 ;
@@ -355,6 +345,7 @@ static struct VarsInit{
       ObSysVars[15].default_value_ = "281018368" ;
       ObSysVars[15].base_value_ = "12582912" ;
       ObSysVars[15].data_type_ = ObUInt64Type ;
+      ObSysVars[15].on_update_func_ = "ObSysVarOnUpdateFuncs::update_sql_mode" ;
       ObSysVars[15].on_check_and_convert_func_ = "ObSysVarOnCheckFuncs::check_and_convert_sql_mode" ;
       ObSysVars[15].get_meta_type_func_ = "ObSysVarGetMetaTypeFuncs::get_meta_type_varchar" ;
       ObSysVars[15].to_select_obj_func_ = "ObSysVarToObjFuncs::to_obj_sql_mode" ;
@@ -1461,13 +1452,6 @@ static struct VarsInit{
     }();
 
     [&] (){
-      ObSysVars[95].default_value_ = "8000000" ;
-      ObSysVars[95].info_ = "The maximum available memory in bytes for the internal stack used for regular expression matching operations" ;
-      ObSysVars[95].name_ = "regexp_stack_limit" ;
-      ObSysVars[95].data_type_ = ObIntType ;
-      ObSysVars[95].min_val_ = "0" ;
-      ObSysVars[95].max_val_ = "2147483647" ;
-      ObSysVars[95].flags_ = ObSysVarFlag::GLOBAL_SCOPE ;
       ObSysVars[95].id_ = SYS_VAR_REGEXP_STACK_LIMIT ;
       cur_max_var_id = MAX(cur_max_var_id, static_cast<int64_t>(SYS_VAR_REGEXP_STACK_LIMIT)) ;
       ObSysVarsIdToArrayIdx[SYS_VAR_REGEXP_STACK_LIMIT] = 95 ;
@@ -1475,7 +1459,7 @@ static struct VarsInit{
       ObSysVars[95].default_value_ = "8000000" ;
       ObSysVars[95].base_value_ = "8000000" ;
       ObSysVars[95].data_type_ = ObIntType ;
-      ObSysVars[95].info_ = "Regular expression compiled-program and per-delegate DFA byte budget (legacy name); zero uses 8 MiB, capped at 64 MiB; not a VM stack or total-memory limit" ;
+      ObSysVars[95].info_ = "The maximum available memory in bytes for the internal stack used for regular expression matching operations" ;
       ObSysVars[95].flags_ = ObSysVarFlag::GLOBAL_SCOPE ;
       ObSysVars[95].min_val_ = "0" ;
       ObSysVars[95].max_val_ = "2147483647" ;
@@ -1483,13 +1467,6 @@ static struct VarsInit{
     }();
 
     [&] (){
-      ObSysVars[96].default_value_ = "32" ;
-      ObSysVars[96].info_ = "The time limit for regular expression matching operations, default unit is milliseconds" ;
-      ObSysVars[96].name_ = "regexp_time_limit" ;
-      ObSysVars[96].data_type_ = ObIntType ;
-      ObSysVars[96].min_val_ = "0" ;
-      ObSysVars[96].max_val_ = "2147483647" ;
-      ObSysVars[96].flags_ = ObSysVarFlag::GLOBAL_SCOPE ;
       ObSysVars[96].id_ = SYS_VAR_REGEXP_TIME_LIMIT ;
       cur_max_var_id = MAX(cur_max_var_id, static_cast<int64_t>(SYS_VAR_REGEXP_TIME_LIMIT)) ;
       ObSysVarsIdToArrayIdx[SYS_VAR_REGEXP_TIME_LIMIT] = 96 ;
@@ -1497,7 +1474,7 @@ static struct VarsInit{
       ObSysVars[96].default_value_ = "32" ;
       ObSysVars[96].base_value_ = "32" ;
       ObSysVars[96].data_type_ = ObIntType ;
-      ObSysVars[96].info_ = "Regular expression backtracking budget (legacy name): value times 10000 attempts, capped at 100000000; zero uses 1000000; not a millisecond timeout" ;
+      ObSysVars[96].info_ = "The time limit for regular expression matching operations, default unit is milliseconds" ;
       ObSysVars[96].flags_ = ObSysVarFlag::GLOBAL_SCOPE ;
       ObSysVars[96].min_val_ = "0" ;
       ObSysVars[96].max_val_ = "2147483647" ;
@@ -9892,72 +9869,72 @@ static struct VarsInit{
     }();
 
     [&] (){
-      ObSysVars[716].default_value_ = "1024" ;
-      ObSysVars[716].info_ = "The extra info size threshold filled into the hnsw index param, when not specified during hnsw index creation." ;
-      ObSysVars[716].name_ = "ob_hnsw_extra_info_max_size" ;
-      ObSysVars[716].data_type_ = ObUInt64Type ;
-      ObSysVars[716].min_val_ = "0" ;
-      ObSysVars[716].max_val_ = "16384" ;
-      ObSysVars[716].flags_ = ObSysVarFlag::SESSION_SCOPE | ObSysVarFlag::GLOBAL_SCOPE ;
       ObSysVars[716].id_ = SYS_VAR_OB_HNSW_EXTRA_INFO_MAX_SIZE ;
       cur_max_var_id = MAX(cur_max_var_id, static_cast<int64_t>(SYS_VAR_OB_HNSW_EXTRA_INFO_MAX_SIZE)) ;
       ObSysVarsIdToArrayIdx[SYS_VAR_OB_HNSW_EXTRA_INFO_MAX_SIZE] = 716 ;
+      ObSysVars[716].name_ = "ob_hnsw_extra_info_max_size" ;
+      ObSysVars[716].default_value_ = "1024" ;
       ObSysVars[716].base_value_ = "1024" ;
+      ObSysVars[716].data_type_ = ObUInt64Type ;
+      ObSysVars[716].info_ = "The extra info size threshold filled into the hnsw index param, when not specified during hnsw index creation." ;
+      ObSysVars[716].flags_ = ObSysVarFlag::SESSION_SCOPE | ObSysVarFlag::GLOBAL_SCOPE ;
+      ObSysVars[716].min_val_ = "0" ;
+      ObSysVars[716].max_val_ = "16384" ;
     ObSysVars[716].alias_ = "OB_SV_HNSW_EXTRA_INFO_MAX_SIZE" ;
     }();
 
     [&] (){
-      ObSysVars[717].default_value_ = "1" ;
-      ObSysVars[717].info_ = "control whether the optimizer pushes down join predicates to view" ;
-      ObSysVars[717].name_ = "_push_join_predicate" ;
-      ObSysVars[717].data_type_ = ObIntType ;
-      ObSysVars[717].flags_ = ObSysVarFlag::SESSION_SCOPE | ObSysVarFlag::GLOBAL_SCOPE | ObSysVarFlag::INVISIBLE | ObSysVarFlag::INFLUENCE_PLAN ;
       ObSysVars[717].id_ = SYS_VAR__PUSH_JOIN_PREDICATE ;
       cur_max_var_id = MAX(cur_max_var_id, static_cast<int64_t>(SYS_VAR__PUSH_JOIN_PREDICATE)) ;
       ObSysVarsIdToArrayIdx[SYS_VAR__PUSH_JOIN_PREDICATE] = 717 ;
+      ObSysVars[717].name_ = "_push_join_predicate" ;
+      ObSysVars[717].default_value_ = "1" ;
       ObSysVars[717].base_value_ = "1" ;
+      ObSysVars[717].data_type_ = ObIntType ;
+      ObSysVars[717].info_ = "control whether the optimizer pushes down join predicates to view" ;
+      ObSysVars[717].flags_ = ObSysVarFlag::SESSION_SCOPE | ObSysVarFlag::GLOBAL_SCOPE | ObSysVarFlag::INVISIBLE | ObSysVarFlag::INFLUENCE_PLAN ;
     ObSysVars[717].alias_ = "OB_SV__PUSH_JOIN_PREDICATE" ;
     }();
 
     [&] (){
-      ObSysVars[718].default_value_ = "0" ;
-      ObSysVars[718].info_ = "set the smallest drop_ratio of values across all dimensions of the query vector to zero" ;
-      ObSysVars[718].name_ = "ob_sparse_drop_ratio_search" ;
-      ObSysVars[718].data_type_ = ObUInt64Type ;
-      ObSysVars[718].min_val_ = "0" ;
-      ObSysVars[718].max_val_ = "100" ;
-      ObSysVars[718].flags_ = ObSysVarFlag::SESSION_SCOPE ;
       ObSysVars[718].id_ = SYS_VAR_OB_SPARSE_DROP_RATIO_SEARCH ;
       cur_max_var_id = MAX(cur_max_var_id, static_cast<int64_t>(SYS_VAR_OB_SPARSE_DROP_RATIO_SEARCH)) ;
       ObSysVarsIdToArrayIdx[SYS_VAR_OB_SPARSE_DROP_RATIO_SEARCH] = 718 ;
+      ObSysVars[718].name_ = "ob_sparse_drop_ratio_search" ;
+      ObSysVars[718].default_value_ = "0" ;
       ObSysVars[718].base_value_ = "0" ;
+      ObSysVars[718].data_type_ = ObUInt64Type ;
+      ObSysVars[718].info_ = "set the smallest drop_ratio of values across all dimensions of the query vector to zero" ;
+      ObSysVars[718].flags_ = ObSysVarFlag::SESSION_SCOPE ;
+      ObSysVars[718].min_val_ = "0" ;
+      ObSysVars[718].max_val_ = "100" ;
     ObSysVars[718].alias_ = "OB_SV_SPARSE_DROP_RATIO_SEARCH" ;
     }();
 
     [&] (){
-      ObSysVars[718].id_ = SYS_VAR_ENABLE_FILE_SQL ;
+      ObSysVars[719].id_ = SYS_VAR_ENABLE_FILE_SQL ;
       cur_max_var_id = MAX(cur_max_var_id, static_cast<int64_t>(SYS_VAR_ENABLE_FILE_SQL)) ;
-      ObSysVarsIdToArrayIdx[SYS_VAR_ENABLE_FILE_SQL] = 718 ;
-      ObSysVars[718].name_ = "enable_file_sql" ;
-      ObSysVars[718].default_value_ = "0" ;
-      ObSysVars[718].base_value_ = "0" ;
-      ObSysVars[718].data_type_ = ObIntType ;
-      ObSysVars[718].info_ = "whether to enable querying local files directly through read_csv/read_json/read_ndjson/read_parquet/glob" ;
-      ObSysVars[718].flags_ = ObSysVarFlag::GLOBAL_SCOPE | ObSysVarFlag::SESSION_SCOPE | ObSysVarFlag::NEED_SERIALIZE ;
-    ObSysVars[718].alias_ = "OB_SV_ENABLE_FILE_SQL" ;
-    }();
-
-    [&] (){
-      ObSysVars[719].id_ = SYS_VAR_AI_COLUMN_STRICT_READ ;
-      cur_max_var_id = MAX(cur_max_var_id, static_cast<int64_t>(SYS_VAR_AI_COLUMN_STRICT_READ)) ;
-      ObSysVarsIdToArrayIdx[SYS_VAR_AI_COLUMN_STRICT_READ] = 719 ;
-      ObSysVars[719].name_ = "ai_column_strict_read" ;
+      ObSysVarsIdToArrayIdx[SYS_VAR_ENABLE_FILE_SQL] = 719 ;
+      ObSysVars[719].name_ = "enable_file_sql" ;
       ObSysVars[719].default_value_ = "0" ;
       ObSysVars[719].base_value_ = "0" ;
       ObSysVars[719].data_type_ = ObIntType ;
-      ObSysVars[719].info_ = "whether reading AI columns requires all rows to be ready" ;
+      ObSysVars[719].info_ = "whether to enable querying local files directly through read_csv/read_json/read_ndjson/read_parquet/glob" ;
       ObSysVars[719].flags_ = ObSysVarFlag::GLOBAL_SCOPE | ObSysVarFlag::SESSION_SCOPE | ObSysVarFlag::NEED_SERIALIZE ;
-    ObSysVars[719].alias_ = "OB_SV_AI_COLUMN_STRICT_READ" ;
+    ObSysVars[719].alias_ = "OB_SV_ENABLE_FILE_SQL" ;
+    }();
+
+    [&] (){
+      ObSysVars[720].id_ = SYS_VAR_AI_COLUMN_STRICT_READ ;
+      cur_max_var_id = MAX(cur_max_var_id, static_cast<int64_t>(SYS_VAR_AI_COLUMN_STRICT_READ)) ;
+      ObSysVarsIdToArrayIdx[SYS_VAR_AI_COLUMN_STRICT_READ] = 720 ;
+      ObSysVars[720].name_ = "ai_column_strict_read" ;
+      ObSysVars[720].default_value_ = "0" ;
+      ObSysVars[720].base_value_ = "0" ;
+      ObSysVars[720].data_type_ = ObIntType ;
+      ObSysVars[720].info_ = "whether reading AI columns requires all rows to be ready" ;
+      ObSysVars[720].flags_ = ObSysVarFlag::GLOBAL_SCOPE | ObSysVarFlag::SESSION_SCOPE | ObSysVarFlag::NEED_SERIALIZE ;
+    ObSysVars[720].alias_ = "OB_SV_AI_COLUMN_STRICT_READ" ;
     }();
 
     if (cur_max_var_id >= ObSysVarMeta::OB_MAX_SYS_VAR_ID) {
@@ -9966,7 +9943,7 @@ static struct VarsInit{
   }
 }vars_init;
 
-static int64_t var_amount = 720;
+static int64_t var_amount = 721;
 
 int64_t ObSysVariables::get_all_sys_var_count(){ return ObSysVarMeta::ALL_SYS_VARS_COUNT;}
 ObSysVarClassType ObSysVariables::get_sys_var_id(int64_t i){ return ObSysVars[i].id_;}

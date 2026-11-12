@@ -110,6 +110,13 @@ int ObExprAIPrompt::eval_ai_prompt(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &
   }
 
   if (OB_FAIL(ret)) {
+  } else if (template_str.empty()) {
+    // an empty template is not a valid prompt
+    ret = OB_INVALID_ARGUMENT;
+    LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_prompt, template is empty");
+  }
+
+  if (OB_FAIL(ret)) {
   } else if (OB_FAIL(ObAIFuncJsonUtils::get_json_array(tmp_allocator, args_array))) {
   } else {
     for (int64_t i = 1; i < expr.arg_cnt_ && OB_SUCC(ret); i++) {

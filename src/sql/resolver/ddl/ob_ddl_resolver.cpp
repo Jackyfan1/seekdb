@@ -1875,7 +1875,8 @@ int ObDDLResolver::resolve_column_definition(ObColumnSchemaV2 &column,
       }
     }
   }
-  if (OB_SUCC(ret) && GEN_COLUMN_DEFINITION_NUM_CHILD == node->num_child_) {
+  if (OB_SUCC(ret) && (GEN_COLUMN_DEFINITION_NUM_CHILD == node->num_child_
+                    || AI_COLUMN_DEFINITION_NUM_CHILD == node->num_child_)) {
     ParseNode *expr_node = NULL;
     if (OB_ISNULL(expr_node = node->children_[3])) {
       ret = OB_ERR_UNEXPECTED;
@@ -1930,6 +1931,9 @@ int ObDDLResolver::resolve_column_definition(ObColumnSchemaV2 &column,
       if (OB_UNLIKELY(GEN_COLUMN_DEFINITION_NUM_CHILD == node->num_child_)) {
         // generated column with pos_column
         pos_node = node->children_[5];
+      } else if (OB_UNLIKELY(AI_COLUMN_DEFINITION_NUM_CHILD == node->num_child_)) {
+        // ai column with pos_column, the WITH options are kept in slot 5
+        pos_node = node->children_[6];
       } else {
         // normal column with pos_column
         pos_node = node->children_[3];
