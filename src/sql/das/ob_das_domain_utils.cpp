@@ -285,7 +285,10 @@ int ObDASDomainUtils::build_ft_doc_word_infos(
   int ret = OB_SUCCESS;
   static int64_t FT_WORD_DOC_COL_CNT = 4;
   static constexpr int64_t FT_MAX_WORD_BUCKET = 997;
-  const int64_t ft_word_bkt_cnt = MIN(MAX(fulltext.length() / 10, 2), FT_MAX_WORD_BUCKET);
+  // size the word map for the token count instead of the character count: a document
+  // of n characters yields roughly n/4 tokens, so a smaller bucket count would rehash
+  // several times while the words are being grouped.
+  const int64_t ft_word_bkt_cnt = MIN(MAX(fulltext.length() / 4, 8), FT_MAX_WORD_BUCKET);
   int64_t doc_length = 0;
   ObFTWordMap ft_word_map;
   void *rows_buf = nullptr;

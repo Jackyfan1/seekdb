@@ -178,15 +178,27 @@ int ObAddWord::casedown_word(const ObFTWord &src, ObFTWord &dst)
   if (OB_UNLIKELY(src.empty())) {
     ret = OB_INVALID_ARGUMENT;
   } else if (flag_.casedown()) {
-    ObString dst_str;
-    if (OB_FAIL(ObCharset::tolower(
-                    word_meta_.get_collation_type(),
-                    src.get_word().get_string(),
-                    dst_str,
-                    allocator_))) {
+    const ObString src_str = src.get_word().get_string();
+    // case folding only rewrites letters, so a pure lower case ascii word is already
+    // normalized. Skip the copy and the charset conversion for it.
+    bool need_casedown = false;
+    for (int64_t i = 0; !need_casedown && i < src_str.length(); ++i) {
+      const unsigned char c = static_cast<unsigned char>(src_str.ptr()[i]);
+      need_casedown = c >= 0x80 || (c >= 'A' && c <= 'Z');
+    }
+    if (!need_casedown) {
+      dst = src;
     } else {
-      ObFTWord tmp(dst_str.length(), dst_str.ptr(), word_meta_);
-      dst = tmp;
+      ObString dst_str;
+      if (OB_FAIL(ObCharset::tolower(
+                      word_meta_.get_collation_type(),
+                      src_str,
+                      dst_str,
+                      allocator_))) {
+      } else {
+        ObFTWord tmp(dst_str.length(), dst_str.ptr(), word_meta_);
+        dst = tmp;
+      }
     }
   } else {
     dst = src;
