@@ -31,6 +31,7 @@ class Engine {
     std::unordered_map<int64_t, size_t> pk_index;  // 主键 -> rows 下标
     int pk_col = -1;       // 主键列下标
     int vector_col = -1;   // 向量列下标（-1 表示无）
+    std::string vector_index_name;  // 已建的向量索引名（精确扫描后端，仅元数据）
     int colIndex(const std::string& name) const;
   };
 
@@ -45,6 +46,7 @@ class Engine {
   const Table* findTable(const std::string& name) const;
 
   void execCreate(const Statement& st, QueryResult& res);
+  void execCreateIndex(const Statement& st, QueryResult& res);
   void execInsert(const Statement& st, QueryResult& res);
   void execSelect(const Statement& st, QueryResult& res);
   void execUpdate(const Statement& st, QueryResult& res);

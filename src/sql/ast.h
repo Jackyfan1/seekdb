@@ -36,12 +36,17 @@ struct SelectItem {
 struct Statement {
   enum Kind {
     CreateTable, Insert, Select, Update, Delete,
-    Begin, Commit, Rollback, ShowTables, Exit
+    CreateVectorIndex, Begin, Commit, Rollback, ShowTables
   } kind = Select;
 
   // CreateTable
   std::string table_name;
   std::vector<Column> columns;
+
+  // CreateVectorIndex
+  std::string index_name;
+  std::string index_table;
+  std::string index_column;
 
   // Insert
   std::vector<std::string> insert_cols;

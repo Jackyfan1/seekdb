@@ -11,6 +11,10 @@
     {
       "id": "up2",
       "content": "继续"
+    },
+    {
+      "id": "up3",
+      "content": "完成电脑联想浏览器里面轻量向量数据库题目，之前已经写过但没有通过提测，你帮我修改一下"
     }
   ],
   "conversations": [
@@ -48,15 +52,35 @@
       "id": "c7",
       "role": "agent",
       "content": "补充事务与崩溃恢复自测，发现并修复两个缺陷：一是解析器 UPDATE/DELETE 中 expect(WHERE) 后多余 advance() 导致跳过首列；二是自动提交语句的 undo 记录未在持久化后清除，导致 ROLLBACK 误回滚已提交数据。修复后事务语义与崩溃恢复测试通过。"
+    },
+    {
+      "id": "c8",
+      "role": "student",
+      "content": "完成电脑联想浏览器里面轻量向量数据库题目，之前已经写过但没有通过提测，你帮我修改一下"
+    },
+    {
+      "id": "c9",
+      "role": "agent",
+      "content": "定位提测失败根因：上一版把 stdin 当成纯 SQL 逐行读取，stdout 输出制表符结果行和 OK/ERROR 文本行；而正式判题器使用 JSON Lines 协议。官方 2026-competition-round2 分支在 commit f4d4e266 补充了 STDIO_PROTOCOL.md 与 protocol_check/ 自测驱动，规定启动必须先输出 {\"type\":\"ready\"}，每个请求一行 JSON（id/op/sql/search_mode），响应必须回传同类型 id、布尔 ok，查询返回 columns+rows、增删改返回 affected_rows、失败返回 error.code，shutdown 后不得再输出并以 0 退出。协议不匹配会让全部 MySQL 用例直接判失败，这就是「MySQL 正式用例未通过」的直接原因。"
+    },
+    {
+      "id": "c10",
+      "role": "agent",
+      "content": "按协议与真题包（20 个公开用例）修改：(1) 重写 src/server/main.cpp 为 JSONL 会话层，自带最小 JSON 解析/转义，ready 在读取首条请求前 flush；(2) BIGINT 用 int64 精确输出，浮点统一 %.6f，向量按 float32 语义输出为 JSON 数组；(3) 错误码映射为 duplicate_key / unsupported_sql / dimension_mismatch / unknown_table 等；(4) 词法/语法补齐负数字面量、CREATE VECTOR INDEX、无 AS 别名，ALTER TABLE 明确返回 unsupported_sql；(5) UPDATE/DELETE 允许省略 WHERE；(6) VARCHAR 长度改为按 Unicode 字符数校验；(7) 数据目录兼容 --data-dir/位置参数/VECTORDB_DATA_DIR，启动时自动创建。"
+    },
+    {
+      "id": "c11",
+      "role": "agent",
+      "content": "用官方 protocol_check/run.py 在 WSL Ubuntu 24.04 上以 --command 方式对本地可执行文件验证：握手 PASS，20 个公开用例（95 条 SQL）全部 PASS；新增 tests/crash_check.py 验证 kill -9 后已提交数据保留、未提交事务不生效，结果 CRASH RECOVERY PASS。"
     }
   ],
   "experiments": [
     {
       "id": "e1",
-      "name": "公开用例自测",
+      "name": "公开用例自测（旧版纯文本协议，历史记录）",
       "command": "python3 tests/self_test.py",
       "output": "[PASS] sql_comparisons\n[PASS] sql_crud\n[PASS] sql_empty\n[PASS] sql_ordering\n[PASS] vector_euclidean\nALL PASS",
-      "result": "5 个公开用例全部通过"
+      "result": "5 个旧公开用例通过，但该自测脚本按旧文本协议回读，无法发现协议不匹配"
     },
     {
       "id": "e2",
@@ -67,7 +91,7 @@
     },
     {
       "id": "e3",
-      "name": "崩溃恢复自测",
+      "name": "崩溃恢复自测（旧脚本，历史记录）",
       "command": "python3 tests/crash_test.py",
       "output": "[PASS] committed rows survive crash: ['1\\t一', '2\\t二']\n[PASS] uncommitted rows rolled back: ['1\\t一', '2\\t二']\nCRASH RECOVERY PASS",
       "result": "提交后强杀数据保留，未提交事务强杀后回滚"
@@ -78,6 +102,27 @@
       "command": "ldd build/minivectordb",
       "output": "仅依赖 libm.so.6 / libc.so.6 / ld-linux-x86-64.so.2",
       "result": "libstdc++/libgcc 已静态链入，运行时镜像依赖最小"
+    },
+    {
+      "id": "e5",
+      "name": "官方协议握手（JSONL）",
+      "command": "python3 protocol_check/run.py --command '[\"./build/minivectordb\",\"{data_dir}\"]' --handshake-only --output /tmp/pc-hs",
+      "output": "handshake: PASS",
+      "result": "启动后主动输出 {\"type\":\"ready\"}，握手、flush 与 shutdown 退出码均符合 STDIO_PROTOCOL.md"
+    },
+    {
+      "id": "e6",
+      "name": "官方公开用例全量自测",
+      "command": "python3 protocol_check/run.py --command '[\"./build/minivectordb\",\"{data_dir}\"]' --output /tmp/pc-public",
+      "output": "sql_crud/sql_comparisons/sql_ordering/sql_empty/sql_primary_key/sql_unicode/sql_bigint/sql_unsupported/storage_restart/vector_euclidean/transaction_commit/transaction_rollback/storage_mutations/storage_multiple_tables/vector_ties_and_filter/vector_float32/vector_index_maintenance/transaction_failed_insert/transaction_autocommit_atomic/transaction_shutdown_rollback: 全部 PASS",
+      "result": "20 个公开用例、95 条 SQL 全部通过，含重启、ann 模式、事务与错误码断言"
+    },
+    {
+      "id": "e7",
+      "name": "强杀恢复自测（新脚本，JSONL 协议）",
+      "command": "python3 tests/crash_check.py ./build/minivectordb",
+      "output": "CRASH RECOVERY PASS",
+      "result": "kill -9 后已提交数据保留，事务内未提交的插入与更新均不生效"
     }
   ],
   "retrospective": [
@@ -92,6 +137,14 @@
     {
       "id": "r3",
       "content": "评测协议细节（结果集格式、错误码、就绪标识）官方驱动未随公开包发布，本实现把协议集中在 config.h 与 main.cpp 的 Output 层，若正式题包有出入可只改一处对齐，不动引擎。"
+    },
+    {
+      "id": "r4",
+      "content": "复盘：功能正确不等于能提测。上一版自己写自测脚本、按自己发明的文本协议回读，5 个用例全 PASS 却与官方判题器完全不兼容，导致「MySQL 正式用例未通过」且总分为 0。正确做法是先找到官方协议文档与官方自测驱动，让本地验证链路和判题链路使用同一套报文，再谈 SQL 正确性与性能；这次修复后先用 protocol_check 跑通握手，再跑 20 个公开用例，失败定位也由官方工具给出具体行号。"
+    },
+    {
+      "id": "r5",
+      "content": "错误语义要按题面分层：ALTER TABLE 属于「不支持的能力」应返回 unsupported_sql，非法向量维度属于 dimension_mismatch，主键冲突属于 duplicate_key。之前统一抛 syntax_error，虽然进程不崩，但断言错误语义的用例会失败。"
     }
   ],
   "limitations": [
@@ -101,7 +154,7 @@
     },
     {
       "id": "l2",
-      "content": "未实现 CREATE VECTOR INDEX 近似索引与 ann 模式，向量检索为精确扫描。"
+      "content": "CREATE VECTOR INDEX 与 ann 模式已可执行，但后端是精确扫描（召回率 1.0），没有真正的近似索引结构，性能榜不占优。"
     },
     {
       "id": "l3",
@@ -109,7 +162,15 @@
     },
     {
       "id": "l4",
-      "content": "负数字面量未在词法层支持（公开用例与题面示例均未涉及）。"
+      "content": "负数字面量已在词法/字面量层支持（含 BIGINT 最小值），并由 sql_bigint 用例覆盖。"
+    },
+    {
+      "id": "l5",
+      "content": "所有表仍全量常驻内存，数据量超过内存预算的正式场景尚未改成磁盘分页或流式扫描；公开用例与 2 GiB 小规模负载可正常工作。"
+    },
+    {
+      "id": "l6",
+      "content": "本地用 protocol_check --command 验证的是本机进程；正式提交前还用 Dockerfile 构建镜像再跑一遍 --image 模式，确认只读根文件系统与默认启动参数。"
     }
   ]
 }

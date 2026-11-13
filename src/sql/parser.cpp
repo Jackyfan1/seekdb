@@ -6,6 +6,20 @@
 
 namespace mvd {
 
+namespace {
+
+std::string upperAscii(const std::string& s) {
+  std::string r = s;
+  for (auto& c : r) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+  return r;
+}
+
+bool isWord(const Token& t, const char* word) {
+  return t.kind == TokKind::Ident && upperAscii(t.text) == word;
+}
+
+}  // namespace
+
 Parser::Parser(const std::string& buf, size_t start) : lexer_(buf, start) {}
 
 void Parser::advance() { cur_ = lexer_.next(); }
@@ -102,8 +116,9 @@ std::unique_ptr<Statement> Parser::parseStatement() {
     case TokKind::KwRollback: st = parseTxn(Statement::Rollback); break;
     case TokKind::KwShow: st = parseShow(); break;
     default:
-      throw SqlError(ErrKind::SyntaxError,
-                     "unsupported or unrecognized statement near '" + cur_.text + "'");
+      // ALTER TABLE 等题目明确不支持的语句：返回 unsupported_sql，而不是静默执行。
+      throw SqlError(ErrKind::Unsupported,
+                     "unsupported statement near '" + cur_.text + "'");
   }
   expectSemicolon();
   return st;
@@ -164,6 +179,29 @@ Column Parser::parseColumnDef() {
 
 std::unique_ptr<Statement> Parser::parseCreate() {
   advance();  // CREATE
+  if (cur_.kind == TokKind::KwVector) {
+    // CREATE VECTOR INDEX index_name ON table_name(vector_column)
+    advance();
+    if (!isWord(cur_, "INDEX")) {
+      throw SqlError(ErrKind::SyntaxError, "expected INDEX after CREATE VECTOR");
+    }
+    advance();
+    auto st = std::make_unique<Statement>();
+    st->kind = Statement::CreateVectorIndex;
+    st->index_name = parseIdent();
+    if (!isWord(cur_, "ON")) {
+      throw SqlError(ErrKind::SyntaxError, "expected ON after index name");
+    }
+    advance();
+    st->index_table = parseIdent();
+    expect(TokKind::LParen, "(");
+    st->index_column = parseIdent();
+    expect(TokKind::RParen, ")");
+    return st;
+  }
+  if (cur_.kind != TokKind::KwTable) {
+    throw SqlError(ErrKind::Unsupported, "only CREATE TABLE / CREATE VECTOR INDEX is supported");
+  }
   expect(TokKind::KwTable, "TABLE");
   auto st = std::make_unique<Statement>();
   st->kind = Statement::CreateTable;
@@ -182,6 +220,19 @@ std::unique_ptr<Statement> Parser::parseCreate() {
 }
 
 Cell Parser::parseLiteral() {
+  if (cur_.kind == TokKind::Minus) {
+    // 负数字面量：-9223372036854775808 也必须能精确解析。
+    advance();
+    if (cur_.kind != TokKind::IntLit) {
+      if (cur_.kind == TokKind::Eof) incomplete_ = true;
+      throw SqlError(ErrKind::SyntaxError, "expected integer literal after '-'");
+    }
+    Cell c;
+    c.kind = Cell::Kind::Int;
+    c.i = std::strtoll(("-" + cur_.text).c_str(), nullptr, 10);
+    advance();
+    return c;
+  }
   if (cur_.kind == TokKind::IntLit) {
     Cell c; c.kind = Cell::Kind::Int; c.i = parseIntLiteral(); return c;
   }
@@ -248,6 +299,9 @@ SelectItem Parser::parseSelectItem() {
     if (cur_.kind == TokKind::KwAs) {
       advance();
       item.alias = parseIdent();
+    } else if (cur_.kind == TokKind::Ident) {
+      item.alias = cur_.text;
+      advance();
     }
     return item;
   }
@@ -256,6 +310,9 @@ SelectItem Parser::parseSelectItem() {
   if (cur_.kind == TokKind::KwAs) {
     advance();
     item.alias = parseIdent();
+  } else if (cur_.kind == TokKind::Ident) {
+    item.alias = cur_.text;
+    advance();
   }
   return item;
 }
@@ -349,8 +406,10 @@ std::unique_ptr<Statement> Parser::parseUpdate() {
     if (cur_.kind == TokKind::Comma) { advance(); continue; }
     break;
   }
-  expect(TokKind::KwWhere, "WHERE");
-  st->where = parseWhere();
+  if (cur_.kind == TokKind::KwWhere) {
+    advance();
+    st->where = parseWhere();
+  }
   return st;
 }
 
@@ -360,8 +419,10 @@ std::unique_ptr<Statement> Parser::parseDelete() {
   auto st = std::make_unique<Statement>();
   st->kind = Statement::Delete;
   st->table_name = parseIdent();
-  expect(TokKind::KwWhere, "WHERE");
-  st->where = parseWhere();
+  if (cur_.kind == TokKind::KwWhere) {
+    advance();
+    st->where = parseWhere();
+  }
   return st;
 }
 

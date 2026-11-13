@@ -12,7 +12,7 @@ enum class TokKind {
   KwSelect, KwFrom, KwWhere, KwAnd, KwOrder, KwBy, KwAsc, KwDesc,
   KwLimit, KwUpdate, KwSet, KwDelete, KwBegin, KwCommit, KwRollback,
   KwAs, KwBigInt, KwVarchar, KwVector, KwL2Distance, KwShow, KwTables,
-  Comma, LParen, RParen, Semicolon, Star, Eq, Lt, Le, Gt, Ge,
+  Comma, LParen, RParen, Semicolon, Star, Eq, Lt, Le, Gt, Ge, Minus,
   Eof,
 };
 

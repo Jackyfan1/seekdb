@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <string>
@@ -17,6 +18,14 @@ namespace mvd {
 namespace {
 
 const char kMagic[4] = {'M', 'V', 'D', '1'};
+
+size_t utf8CharCount(const std::string& s) {
+  size_t n = 0;
+  for (unsigned char c : s) {
+    if ((c & 0xC0) != 0x80) ++n;
+  }
+  return n;
+}
 
 // ---- 二进制序列化辅助（小端，目标 x86_64）----
 
@@ -106,7 +115,14 @@ const Engine::Table* Engine::findTable(const std::string& name) const {
   return it->second.get();
 }
 
-void Engine::startup() { load(); }
+void Engine::startup() {
+  std::error_code ec;
+  std::filesystem::create_directories(cfg_.data_dir, ec);
+  if (ec) {
+    throw SqlError(ErrKind::InternalError, "cannot create data dir: " + ec.message());
+  }
+  load();
+}
 
 void Engine::shutdown() {
   if (in_txn_) {
@@ -138,22 +154,23 @@ Cell Engine::coerceValue(const Column& col, const Cell& in) const {
       if (in.kind != Cell::Kind::Str) {
         throw SqlError(ErrKind::TypeMismatch, "column " + col.name + " expects VARCHAR");
       }
-      if (static_cast<int>(in.s.size()) > col.varchar_len) {
-        throw SqlError(ErrKind::TypeMismatch, "value too long for VARCHAR(" +
+      // VARCHAR 长度按 Unicode 字符数计算（UTF-8 续字节不计）。
+      if (static_cast<int>(utf8CharCount(in.s)) > col.varchar_len) {
+        throw SqlError(ErrKind::ValueTooLong, "value too long for VARCHAR(" +
                                                  std::to_string(col.varchar_len) + ")");
       }
       return in;
     case Type::Vector: {
       if (in.kind == Cell::Kind::Vec) {
         if (static_cast<int>(in.v.size()) != col.vector_dim) {
-          throw SqlError(ErrKind::BadVector, "vector dimension mismatch");
+          throw SqlError(ErrKind::DimensionMismatch, "vector dimension mismatch");
         }
         return in;
       }
       if (in.kind == Cell::Kind::Str) {
         std::vector<float> v = parseVectorStr(in.s);
         if (static_cast<int>(v.size()) != col.vector_dim) {
-          throw SqlError(ErrKind::BadVector, "vector dimension mismatch");
+          throw SqlError(ErrKind::DimensionMismatch, "vector dimension mismatch");
         }
         Cell c;
         c.kind = Cell::Kind::Vec;
@@ -255,7 +272,19 @@ void Engine::execCreate(const Statement& st, QueryResult& res) {
   }
 
   tables_[st.table_name] = std::move(t);
-  // res.affected 保持 -1，使会话层输出 "OK"（而非 "OK 0"）。
+  // res.affected 保持 -1：会话层只回 {"ok":true}。
+}
+
+void Engine::execCreateIndex(const Statement& st, QueryResult& res) {
+  (void)res;
+  Table* t = findTable(st.index_table);
+  int ci = t->colIndex(st.index_column);
+  if (t->columns[ci].type != Type::Vector) {
+    throw SqlError(ErrKind::TypeMismatch, "vector index must be created on a VECTOR column");
+  }
+  // 本题允许自选索引算法：这里采用精确扫描后端，索引只记元数据，
+  // 因此建索引后新增/更新/删除的记录天然与检索结果一致（ann 模式也返回精确结果）。
+  t->vector_index_name = st.index_name;
 }
 
 void Engine::execInsert(const Statement& st, QueryResult& res) {
@@ -525,6 +554,7 @@ void Engine::execute(const Statement& st, QueryResult& res) {
   try {
     switch (st.kind) {
       case Statement::CreateTable: execCreate(st, res); break;
+      case Statement::CreateVectorIndex: execCreateIndex(st, res); break;
       case Statement::Insert: execInsert(st, res); break;
       case Statement::Select: execSelect(st, res); break;
       case Statement::Update: execUpdate(st, res); break;
@@ -538,7 +568,8 @@ void Engine::execute(const Statement& st, QueryResult& res) {
   }
 
   bool modifying = (st.kind == Statement::Insert || st.kind == Statement::Update ||
-                    st.kind == Statement::Delete || st.kind == Statement::CreateTable);
+                    st.kind == Statement::Delete || st.kind == Statement::CreateTable ||
+                    st.kind == Statement::CreateVectorIndex);
   if (modifying && !in_txn_) {
     persist();        // 自动提交
     undo_log_.clear();  // 已持久化，无需保留 undo
@@ -549,6 +580,8 @@ void Engine::execute(const Statement& st, QueryResult& res) {
 
 void Engine::persist() {
   std::string dir = cfg_.data_dir;
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
   std::string tmp = dir + "/minivectordb.snap.tmp";
   std::string final = dir + "/minivectordb.snap";
 

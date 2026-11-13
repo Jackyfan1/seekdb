@@ -99,6 +99,7 @@ Token Lexer::next() {
     case ';': t.kind = TokKind::Semicolon; t.text = ";"; ++pos_; return t;
     case '*': t.kind = TokKind::Star; t.text = "*"; ++pos_; return t;
     case '=': t.kind = TokKind::Eq; t.text = "="; ++pos_; return t;
+    case '-': t.kind = TokKind::Minus; t.text = "-"; ++pos_; return t;
     case '<':
       if (pos_ + 1 < buf_.size() && buf_[pos_ + 1] == '=') {
         t.kind = TokKind::Le; t.text = "<="; pos_ += 2;
