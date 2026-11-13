@@ -17,7 +17,9 @@
 #ifndef _OCEANBASE_STORAGE_FTS_DICT_OB_FT_DICT_HUB_H_
 #define _OCEANBASE_STORAGE_FTS_DICT_OB_FT_DICT_HUB_H_
 
+#include "lib/allocator/page_arena.h"
 #include "lib/charset/ob_charset.h"
+#include "lib/container/ob_se_array.h"
 #include "lib/lock/ob_bucket_lock.h"
 #include "storage/fts/dict/ob_ft_dict_def.h"
 
@@ -93,10 +95,12 @@ private:
 };
 
 class ObFTCacheRangeContainer;
+class ObIFTDict;
 class ObFTDictHub
 {
 public:
-  ObFTDictHub() : is_inited_(false), dict_map_(), rw_dict_lock_() {}
+  ObFTDictHub() : is_inited_(false), dict_map_(), rw_dict_lock_(), dict_object_map_(),
+                  cached_containers_() {}
   ~ObFTDictHub() {}
 
   int init();
@@ -107,10 +111,18 @@ public:
 
   int load_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &container);
 
+  // Returns a shared, read-only dictionary object.  Building a dictionary (and
+  // pinning its cache blocks) is expensive, so it is done once per dictionary
+  // and reused by all tokenizer instances afterwards.
+  int get_dict_object(const ObFTDictDesc &desc, ObIFTDict *&dict);
+
 private:
   int get_dict_info(const ObFTDictInfoKey &key, ObFTDictInfo &info);
 
   int put_dict_info(const ObFTDictInfoKey &key, const ObFTDictInfo &info);
+
+  // caller must hold the bucket lock of the dictionary
+  void remove_dict_object(const ObFTDictInfoKey &key);
 
 
 private:
@@ -118,6 +130,10 @@ private:
   // holds info of dict
   hash::ObHashMap<ObFTDictInfoKey, ObFTDictInfo> dict_map_;
   ObBucketLock rw_dict_lock_;
+  // shared dict objects and the cache containers they read from
+  ObArenaAllocator dict_object_alloc_;
+  hash::ObHashMap<ObFTDictInfoKey, ObIFTDict *> dict_object_map_;
+  common::ObSEArray<ObFTCacheRangeContainer *, 8> cached_containers_;
 };
 
 } //  namespace storage
